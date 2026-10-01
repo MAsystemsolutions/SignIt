@@ -70,7 +70,53 @@ async function renderSigner(){
   await renderSignPdf(r.data);
 }
 
-async function renderSignPdf(data){const pdf=await pdfjsLib.getDocument({data:new Uint8Array(fromB64(data.pdfBase64))}).promise;const host=$('#signDoc');for(let n=1;n<=pdf.numPages;n++){const p=await pdf.getPage(n),vp=p.getViewport({scale:1.5}),canvas=document.createElement('canvas');canvas.width=vp.width;canvas.height=vp.height;await p.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;const pg=document.createElement('div');pg.className='sign-page';const ov=document.createElement('div');ov.className='overlay';pg.append(canvas,ov);host.append(pg);data.fields.filter(f=>f.page===n-1).forEach(f=>{const el=document.createElement('div');el.dataset.fieldId=f.id;el.className='field'+(String(f.recipientRole||'')===String(data.recipient.sequence)?' assigned':'');el.style.cssText=`left:${f.x*100}%;top:${f.y*100}%;width:${f.w*100}%;height:${f.h*100}%`;const owned=!f.recipientRole||String(f.recipientRole)===String(data.recipient.sequence);if(!owned){el.style.opacity='.28';el.textContent='';ov.append(el);return}if(f.type==='signature'){el.textContent=f.value?'Signed':'Click to sign';el.onclick=()=>signatureFor(f,el)}else if(f.type==='checkbox'){const c=document.createElement('input');c.type='checkbox';c.checked=f.value===true||f.value==='true';c.onchange=()=>f.value=c.checked;el.append(c)}else if(f.type==='dropdown'){const s=document.createElement('select');(f.properties?.options||[]).forEach(o=>{const op=document.createElement('option');op.textContent=o;op.value=o;s.append(op)});s.value=f.value||'';s.onchange=()=>f.value=s.value;el.append(s)}else if(f.type==='number'){const i=document.createElement('input');i.type='number';i.value=f.value||'';i.oninput=()=>f.value=i.value;el.append(i)}else if(f.type==='date'){const i=document.createElement('input');i.type='date';i.value=f.value||'';i.oninput=()=>f.value=i.value;el.append(i)}else{const i=document.createElement('input');i.type='text';i.value=f.value||'';i.placeholder=f.type.replace('_',' ');i.oninput=()=>f.value=i.value;el.append(i)}ov.append(el)});} }
+async function renderSignPdf(data){
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(fromB64(data.pdfBase64))}).promise;
+  const host=$('#signDoc');
+  for(let n=1;n<=pdf.numPages;n++){
+    const p=await pdf.getPage(n),vp=p.getViewport({scale:1.5}),canvas=document.createElement('canvas');
+    canvas.width=vp.width;canvas.height=vp.height;
+    await p.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+    const pg=document.createElement('div');pg.className='sign-page';
+    const ov=document.createElement('div');ov.className='overlay';pg.append(canvas,ov);host.append(pg);
+    data.fields.filter(f=>f.page===n-1).forEach(f=>{
+      const el=document.createElement('div');el.dataset.fieldId=f.id;
+      el.className='field'+(String(f.recipientRole||'')===String(data.recipient.sequence)?' assigned':'');
+      el.style.cssText=`left:${f.x*100}%;top:${f.y*100}%;width:${f.w*100}%;height:${f.h*100}%`;
+      const owned=!f.recipientRole||String(f.recipientRole)===String(data.recipient.sequence);
+      const completed=!!f.value || f.value===true;
+
+      // Previous signers' values are already burned into the PDF. Keep those
+      // fields visible but completely locked; do not draw them a second time.
+      if(!owned){
+        el.style.pointerEvents='none';
+        el.style.background='transparent';
+        el.style.border='0';
+        if(completed)el.setAttribute('aria-label','Completed field');
+        ov.append(el);
+        return;
+      }
+
+      if(f.type==='signature' || f.type==='initials'){
+        el.textContent=f.value?'Signed':'Click to sign';
+        el.onclick=()=>signatureFor(f,el);
+      }else if(f.type==='checkbox'){
+        const c=document.createElement('input');c.type='checkbox';c.checked=f.value===true||f.value==='true';c.onchange=()=>f.value=c.checked;el.append(c);
+      }else if(f.type==='dropdown'){
+        const s=document.createElement('select');
+        (f.properties?.options||[]).forEach(o=>{const op=document.createElement('option');op.textContent=o;op.value=o;s.append(op)});
+        s.value=f.value||'';s.onchange=()=>f.value=s.value;el.append(s);
+      }else if(f.type==='number'){
+        const i=document.createElement('input');i.type='number';i.value=f.value||'';i.oninput=()=>f.value=i.value;el.append(i);
+      }else if(f.type==='date'){
+        const i=document.createElement('input');i.type='date';i.value=f.value||'';i.oninput=()=>f.value=i.value;el.append(i);
+      }else{
+        const i=document.createElement('input');i.type='text';i.value=f.value||'';i.placeholder=f.type.replace('_',' ');i.oninput=()=>f.value=i.value;el.append(i);
+      }
+      ov.append(el);
+    });
+  }
+}
 let sigTarget=null;let sigTargetElement=null;function signatureFor(f,el){sigTarget=f;sigTargetElement=el;modal(`<h2>Your signature</h2><canvas id="sigPad" width="600" height="180" style="width:100%;border:1px dashed #aaa;border-radius:7px;touch-action:none"></canvas><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="applySignerSig()">Apply</button></div>`);const c=$('#sigPad'),ctx=c.getContext('2d');let down=false;c.onpointerdown=e=>{down=true;c.setPointerCapture(e.pointerId);const r=c.getBoundingClientRect();ctx.beginPath();ctx.moveTo((e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height)};c.onpointermove=e=>{if(!down)return;const r=c.getBoundingClientRect();ctx.lineWidth=3;ctx.lineCap='round';ctx.lineTo((e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height);ctx.stroke()};c.onpointerup=()=>down=false}
 function applySignerSig(){const c=$('#sigPad');if(!c||!sigTarget)return;sigTarget.value=c.toDataURL('image/png');closeModal();if(sigTargetElement){sigTargetElement.textContent='Signed';sigTargetElement.classList.add('assigned')}sigTarget=null;sigTargetElement=null}
 async function submitSigner(){
@@ -119,24 +165,10 @@ async function submitSigner(){
   showProcessing('Processing your signature…','Please wait while SignedIt saves your signing step. Do not close or refresh this page.');
 
   try{
-    let finalPdfBase64='';
-
-    /*
-     * Only the last signer needs the final PDF.
-     * signingSession() now returns ALL saved Field_Values
-     * for this envelope, not just the current signer. That
-     * means this PDF contains every previous signature/data
-     * plus the current signer's new values.
-     */
-    const remaining=state.signSession.recipients
-      .filter(x=>String(x.status)!=='Completed');
-
-    const isFinalSigner=remaining.length===1 &&
-      String(remaining[0].sequence)===String(state.signSession.recipient.sequence);
-
-    if(isFinalSigner){
-      finalPdfBase64=await buildCompletedPdf();
-    }
+    // Every signer creates the next immutable PDF version. buildCompletedPdf()
+    // starts from the PDF this signer received and burns only this signer's
+    // fields into it. Previous signers are already permanently embedded.
+    const finalPdfBase64=await buildCompletedPdf();
 
     const r=await api(
       'submitSigning',
@@ -248,8 +280,12 @@ async function buildCompletedPdf(){
     StandardFonts.Helvetica
   );
 
+  const currentSequence=String(state.signSession.recipient.sequence);
+
   for(const f of state.signSession.fields){
 
+    const owned=!f.recipientRole||String(f.recipientRole)===currentSequence;
+    if(!owned)continue;
     if(f.value===undefined||f.value===null||String(f.value)==='')continue;
 
     const page=pdfDoc.getPage(Number(f.page));
