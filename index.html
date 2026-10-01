@@ -123,9 +123,10 @@ async function submitSigner(){
 
     /*
      * Only the last signer needs the final PDF.
-     * The current session already contains the values
-     * saved by previous signers, so we can build the
-     * completed PDF here before sending it to the backend.
+     * signingSession() now returns ALL saved Field_Values
+     * for this envelope, not just the current signer. That
+     * means this PDF contains every previous signature/data
+     * plus the current signer's new values.
      */
     const remaining=state.signSession.recipients
       .filter(x=>String(x.status)!=='Completed');
