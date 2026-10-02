@@ -236,8 +236,8 @@ async function submitSigner(){
       button.textContent='Finish signing';
     }
 
-    toast('Something went wrong while preparing the document. Please try again.');
-    console.error(e);
+    toast('Could not prepare the document: '+(e&&e.message?e.message:'Unknown error'));
+    console.error('SignedIt PDF preparation error:',e);
   }
 }
 
@@ -267,7 +267,7 @@ function hideProcessing(){
 async function buildCompletedPdf(){
 
   if(!state.signSession||!state.signSession.pdfBase64){
-    throw new Error('Original PDF is unavailable.');
+    throw new Error('The signing PDF is unavailable.');
   }
 
   const {PDFDocument,StandardFonts,rgb}=PDFLib;
@@ -312,7 +312,7 @@ async function buildCompletedPdf(){
     if(f.type==='checkbox'){
       const checked=f.value===true||String(f.value)==='true';
       if(checked){
-        page.drawText('✓',{x:x+w*.18,y:y+h*.12,size:Math.max(8,h*.65),font});
+        page.drawText('X',{x:x+w*.18,y:y+h*.12,size:Math.max(8,h*.65),font});
       }
       continue;
     }
