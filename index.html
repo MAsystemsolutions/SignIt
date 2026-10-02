@@ -40,6 +40,7 @@ const state={
   section:'saved',
   templates:[],
   dashboard:null,
+  signingData:null,
   pdf:null,
   fields:[],
   pages:[],
@@ -51,7 +52,8 @@ const state={
   signToken:new URLSearchParams(location.search).get('token'),
   inviteToken:new URLSearchParams(location.search).get('invite'),
   completedMode:new URLSearchParams(location.search).get('completed')==='1',
-  signingBusy:false
+  signingBusy:false,
+  requestBusy:false
 };
 
 const $=s=>document.querySelector(s);
@@ -147,7 +149,7 @@ function showLogin(){
 
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn dark" onclick="doLogin()">Log in</button>
+      <button class="btn dark" id="loginBtn" onclick="doLogin()">Log in</button>
     </div>
   `);
 }
@@ -165,14 +167,20 @@ function closeModal(){
 }
 
 async function doLogin(){
-
+  if(state.requestBusy) return;
   const email=$('#mEmail').value;
   const password=$('#mPass').value;
+  const btn=$('#loginBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Logging in...'; }
+  state.requestBusy=true;
 
   const r=await api('login',{
     email,
     password
   });
+
+  state.requestBusy=false;
+  if(btn){ btn.disabled=false; btn.textContent='Log in'; }
 
   if(!r.success){
     $('#mErr').textContent=r.message;
@@ -198,7 +206,10 @@ async function doLogin(){
 }
 
 async function doLogout(){
+  if(state.requestBusy) return;
+  state.requestBusy=true;
   await api('logout');
+  state.requestBusy=false;
   logoutLocal();
 }
 
@@ -769,6 +780,8 @@ function changeCompanyPlan(companyId,current){
 }
 
 async function saveCompanyPlan(companyId){
+  if(state.requestBusy) return;
+  state.requestBusy=true;
 
   const r=await api(
     'updateCompanyPlan',
@@ -777,6 +790,8 @@ async function saveCompanyPlan(companyId){
       plan:$('#hqPlan').value
     }
   );
+
+  state.requestBusy=false;
 
   if(!r.success){
     return toast(r.message);
@@ -788,10 +803,12 @@ async function saveCompanyPlan(companyId){
 }
 
 async function resendAdminInvite(companyId){
-
   if(!confirm(
     'Resend the primary administrator invitation?'
   ))return;
+
+  if(state.requestBusy) return;
+  state.requestBusy=true;
 
   const r=await api(
     'resendCompanyAdminInvite',
@@ -800,6 +817,8 @@ async function resendAdminInvite(companyId){
       acceptUrl:location.origin+location.pathname
     }
   );
+
+  state.requestBusy=false;
 
   if(!r.success){
     return toast(r.message);
@@ -823,6 +842,8 @@ async function resendAdminInvite(companyId){
 }
 
 async function saveCompanyStatus(companyId){
+  if(state.requestBusy) return;
+  state.requestBusy=true;
 
   const status=$('#hqStatus').value;
 
@@ -833,6 +854,8 @@ async function saveCompanyStatus(companyId){
       status
     }
   );
+
+  state.requestBusy=false;
 
   if(!r.success){
     toast(r.message);
@@ -928,6 +951,7 @@ function showOnboardCompany(){
 
       <button
         class="btn dark"
+        id="onboardBtn"
         onclick="submitOnboardCompany()"
       >
         Onboard company
@@ -939,6 +963,7 @@ function showOnboardCompany(){
 }
 
 async function submitOnboardCompany(){
+  if(state.requestBusy) return;
 
   const companyName=$('#ocName').value.trim();
   const adminName=$('#ocAdmin').value.trim();
@@ -952,6 +977,10 @@ async function submitOnboardCompany(){
     return;
   }
 
+  const btn=$('#onboardBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Onboarding...'; }
+  state.requestBusy=true;
+
   const r=await api(
     'onboardCompany',
     {
@@ -962,6 +991,9 @@ async function submitOnboardCompany(){
       acceptUrl:location.origin+location.pathname
     }
   );
+
+  state.requestBusy=false;
+  if(btn){ btn.disabled=false; btn.textContent='Onboard company'; }
 
   if(!r.success){
 
@@ -1058,6 +1090,7 @@ function renderInvite(){
 
           <button
             class="btn dark"
+            id="activateBtn"
             onclick="activateInvite()"
           >
             Activate account
@@ -1126,6 +1159,7 @@ async function loadInviteInfo(){
 }
 
 async function activateInvite(){
+  if(state.requestBusy) return;
 
   const name=$('#ivName').value.trim();
   const email=$('#ivEmail').value.trim().toLowerCase();
@@ -1164,6 +1198,10 @@ async function activateInvite(){
     return;
   }
 
+  const btn=$('#activateBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Activating...'; }
+  state.requestBusy=true;
+
   const r=await api(
     'acceptInvite',
     {
@@ -1173,6 +1211,9 @@ async function activateInvite(){
       password:p
     }
   );
+
+  state.requestBusy=false;
+  if(btn){ btn.disabled=false; btn.textContent='Activate account'; }
 
   if(!r.success){
 
@@ -1281,6 +1322,7 @@ function renderLanding(){
 function renderApp(){
 
   const u=state.user||{};
+  const isAdmin=String(u.role||'').toLowerCase()==='admin';
 
   $('#app').innerHTML=`
 
@@ -1349,7 +1391,7 @@ function renderApp(){
         ${sideBtn('templates','Templates')}
 
         ${
-          u.role==='admin'
+          isAdmin
           ?
           sideBtn('team','Team')
           :
@@ -1384,15 +1426,62 @@ function sideBtn(k,label){
 }
 
 /* =========================================================
-   CLIENT DASHBOARD
+   CLIENT DASHBOARD / TEAM & SIGNING VIEWS
    ========================================================= */
 
 async function loadDashboard(){
 
   const m=$('#main');
+  if(!m) return;
 
   m.innerHTML=
     '<div class="sub">Loading workspace…</div>';
+
+  if(state.section==='team'){
+    loadTeamSection();
+    return;
+  }
+
+  const isSigningSection=['action','pending','completed'].includes(state.section);
+
+  if(isSigningSection){
+    const r=await api('listSigning');
+    if(!r.success){
+      m.innerHTML=`<div class="empty">${esc(r.message)}</div>`;
+      return;
+    }
+    state.signingData=r.data;
+
+    let list=[];
+    let title='';
+    if(state.section==='action'){
+      list=r.data.actionRequired;
+      title='Action Required';
+    }else if(state.section==='pending'){
+      list=r.data.pending;
+      title='Pending';
+    }else if(state.section==='completed'){
+      list=r.data.completed;
+      title='Completed';
+    }
+
+    m.innerHTML=`
+      <div class="page-title">
+        <div>
+          <h1>${title}</h1>
+          <div class="sub">Actual signing transactions and envelopes</div>
+        </div>
+      </div>
+      ${
+        list.length
+        ?
+        `<div class="cards">${list.map(signingEnvelopeCard).join('')}</div>`
+        :
+        `<div class="empty"><b>No ${title.toLowerCase()} documents.</b></div>`
+      }
+    `;
+    return;
+  }
 
   const r=await api('listDashboard');
 
@@ -1588,8 +1677,169 @@ function templateCard(t){
   `;
 }
 
-async function fav(id){
+function signingEnvelopeCard(env){
+  const isAction=state.section==='action';
+  const signUrl=isAction&&env.actionToken?`?token=${encodeURIComponent(env.actionToken)}`:'';
 
+  return `
+    <div class="card template-card">
+      <div>
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <div class="template-name">
+            ${esc(env.documentName)}
+          </div>
+          <span class="status-pill active">${esc(env.status)}</span>
+        </div>
+        <div class="meta" style="margin-top:6px">
+          Created: ${new Date(env.createdAt||Date.now()).toLocaleString()}
+        </div>
+        <div class="meta" style="margin-top:4px">
+          Recipients: ${(env.recipients||[]).map(r=>esc(r.name)+' ('+esc(r.status)+')').join(', ')}
+        </div>
+      </div>
+      <div class="card-actions" style="margin-top:12px">
+        ${
+          isAction&&env.actionToken
+          ?
+          `<a class="btn dark" href="${signUrl}">Sign / Take Action</a>`
+          :
+          (
+            env.finalFileId
+            ?
+            `<button class="btn dark" onclick="downloadEnvPdf('${env.envelopeId}')">Download Completed PDF</button>`
+            :
+            `<span class="small">Waiting for other signers</span>`
+          )
+        }
+      </div>
+    </div>
+  `;
+}
+
+async function downloadEnvPdf(envelopeId){
+  if(state.requestBusy) return;
+  state.requestBusy=true;
+
+  const r=await api('getCompletedEnvelope',{envelopeId});
+  state.requestBusy=false;
+
+  if(!r.success){
+    toast(r.message);
+    return;
+  }
+
+  const bytes=Uint8Array.from(atob(r.data.pdfBase64),c=>c.charCodeAt(0));
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=r.data.documentName||'SignedIt - Completed.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function loadTeamSection(){
+  const m=$('#main');
+  if(!m) return;
+
+  m.innerHTML=`
+    <div class="page-title">
+      <div>
+        <h1>Team</h1>
+        <div class="sub">Manage company administrators and team users</div>
+      </div>
+      <div>
+        <button class="btn dark" onclick="showOnboardUserModal()">+ Onboard User</button>
+      </div>
+    </div>
+    <div id="teamList" class="card">Loading team members...</div>
+  `;
+
+  const r=await api('listUsers');
+  const box=$('#teamList');
+  if(!box) return;
+
+  if(!r.success){
+    box.innerHTML=`<div class="sub">${esc(r.message)}</div>`;
+    return;
+  }
+
+  const users=r.data||[];
+  box.innerHTML=users.length ? users.map(u=>`
+    <div class="user-row">
+      <div>
+        <b>${esc(u.name)}</b>
+        <small>${esc(u.email)}</small>
+      </div>
+      <div>
+        <span class="status-pill">${esc(u.role)}</span>
+        <span class="status-pill active">${esc(u.status)}</span>
+      </div>
+    </div>
+  `).join('') : '<div class="sub">No team users found.</div>';
+}
+
+function showOnboardUserModal(){
+  modal(`
+    <h2>Onboard User</h2>
+    <div class="sub">Invite a new administrator or user to your company workspace.</div>
+    <label>Full Name</label>
+    <input id="onName" placeholder="Full name">
+    <label>Email Address</label>
+    <input id="onEmail" type="email" placeholder="user@company.com">
+    <label>Role</label>
+    <select id="onRole">
+      <option value="user">User</option>
+      <option value="admin">Admin</option>
+    </select>
+    <div id="onErr" class="small"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn dark" id="onboardUserBtn" onclick="submitOnboardUser()">Send Invitation</button>
+    </div>
+  `);
+}
+
+async function submitOnboardUser(){
+  if(state.requestBusy) return;
+  const name=$('#onName').value.trim();
+  const email=$('#onEmail').value.trim();
+  const role=$('#onRole').value;
+
+  if(!name||!email){
+    $('#onErr').textContent='Please fill in all fields.';
+    return;
+  }
+
+  const btn=$('#onboardUserBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  state.requestBusy=true;
+
+  const r=await api('inviteUser',{
+    name,
+    email,
+    role,
+    acceptUrl:location.origin+location.pathname
+  });
+
+  state.requestBusy=false;
+  if(btn){ btn.disabled=false; btn.textContent='Send Invitation'; }
+
+  if(!r.success){
+    $('#onErr').textContent=r.message;
+    return;
+  }
+
+  closeModal();
+  toast('User invitation sent successfully.');
+  loadTeamSection();
+}
+
+async function fav(id){
+  if(state.requestBusy) return;
+  state.requestBusy=true;
   const r=await api(
     'toggleFavorite',
     {
@@ -1597,6 +1847,7 @@ async function fav(id){
       itemType:'template'
     }
   );
+  state.requestBusy=false;
 
   if(r.success){
     loadDashboard();
@@ -1636,6 +1887,8 @@ async function newTemplate(){
 }
 
 async function openTemplate(id){
+  if(state.requestBusy) return;
+  state.requestBusy=true;
 
   const r=await api(
     'getTemplate',
@@ -1643,6 +1896,8 @@ async function openTemplate(id){
       templateId:id
     }
   );
+
+  state.requestBusy=false;
 
   if(!r.success){
     return toast(r.message);
@@ -1778,6 +2033,7 @@ function renderEditor(){
 
       <button
         class="btn"
+        id="saveTemplateBtn"
         onclick="saveTemplate()"
       >
         Save
@@ -2358,7 +2614,7 @@ function renderProperties(){
 }
 
 async function saveTemplate(){
-
+  if(state.requestBusy) return;
   if(!state.pdf)return;
 
   const name=
@@ -2371,6 +2627,9 @@ async function saveTemplate(){
   if(!name)return;
 
   state.editorName=name;
+  const btn=$('#saveTemplateBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
+  state.requestBusy=true;
 
   const r=await api(
     'saveTemplate',
@@ -2392,6 +2651,9 @@ async function saveTemplate(){
       )
     }
   );
+
+  state.requestBusy=false;
+  if(btn){ btn.disabled=false; btn.textContent='Save'; }
 
   if(!r.success){
     return toast(r.message);
@@ -2474,6 +2736,7 @@ function startSend(templateId){
 
       <button
         class="btn dark"
+        id="createSendBtn"
         onclick="createAndSend('${templateId}')"
       >
         Create & send
@@ -2534,6 +2797,7 @@ function addRecRow(){
 }
 
 async function createAndSend(templateId){
+  if(state.requestBusy) return;
 
   state.recipients=
     state.recipients.map(
@@ -2559,6 +2823,10 @@ async function createAndSend(templateId){
   const mode=
     $('#sendMode').value;
 
+  const btn=$('#createSendBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  state.requestBusy=true;
+
   const r=await api(
     'createEnvelope',
     {
@@ -2569,6 +2837,8 @@ async function createAndSend(templateId){
   );
 
   if(!r.success){
+    state.requestBusy=false;
+    if(btn){ btn.disabled=false; btn.textContent='Create & send'; }
     return toast(r.message);
   }
 
@@ -2581,6 +2851,9 @@ async function createAndSend(templateId){
         location.pathname
     }
   );
+
+  state.requestBusy=false;
+  if(btn){ btn.disabled=false; btn.textContent='Create & send'; }
 
   if(!send.success){
     return toast(send.message);
@@ -2659,7 +2932,7 @@ async function renderSigner(){
     return;
   }
 
-  state.signSession=r.data;
+  state.signingData=r.data;
 
   $('#app').innerHTML=`
 
@@ -3061,14 +3334,14 @@ async function submitSigner(){
   const data={};
 
   for(
-    const f of state.signSession.fields
+    const f of state.signingData.fields
   ){
 
     const owned=
       !f.recipientRole||
       String(f.recipientRole)===
       String(
-        state.signSession.recipient.sequence
+        state.signingData.recipient.sequence
       );
 
     if(!owned)continue;
@@ -3418,8 +3691,8 @@ function cleanPdfText(value){
 async function buildCompletedPdf(){
 
   if(
-    !state.signSession||
-    !state.signSession.pdfBase64
+    !state.signingData||
+    !state.signingData.pdfBase64
   ){
 
     throw new Error(
@@ -3436,7 +3709,7 @@ async function buildCompletedPdf(){
   const pdfDoc=
     await PDFDocument.load(
       fromB64(
-        state.signSession.pdfBase64
+        state.signingData.pdfBase64
       )
     );
 
@@ -3447,11 +3720,11 @@ async function buildCompletedPdf(){
 
   const currentSequence=
     String(
-      state.signSession.recipient.sequence
+      state.signingData.recipient.sequence
     );
 
   for(
-    const f of state.signSession.fields
+    const f of state.signingData.fields
   ){
 
     const owned=
@@ -3835,7 +4108,7 @@ async function renderCompletedDocument(){
         </h2>
 
         <div>
-          ${esc(r.documentName)}
+          ${esc(r.data.documentName)}
         </div>
 
         <div style="margin-top:18px">
@@ -3880,7 +4153,7 @@ async function downloadCompleted(){
 
   const bytes=
     Uint8Array.from(
-      atob(r.pdfBase64),
+      atob(r.data.pdfBase64),
       c=>c.charCodeAt(0)
     );
 
@@ -3901,7 +4174,7 @@ async function downloadCompleted(){
   a.href=url;
 
   a.download=
-    r.documentName||
+    r.data.documentName||
     'SignedIt - Completed.pdf';
 
   document.body.appendChild(a);
