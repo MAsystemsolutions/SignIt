@@ -23,181 +23,3053 @@
 </style>
 </head>
 <body>
-<div id="app"></div><div id="modalRoot"></div><div id="toastRoot"></div>
+
+<div id="app"></div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 const API='https://script.google.com/macros/s/AKfycbwWwz1weCJ938Gq_dZ3Og6yDhPzMWFcOaRUIUbujEkXS0O7_HHRCJmpsqV-GMbCZPvU/exec';
-const state={token:localStorage.getItem('si_token')||'',user:JSON.parse(localStorage.getItem('si_user')||'null'),view:'dashboard',section:'saved',templates:[],dashboard:null,pdf:null,fields:[],pages:[],selected:null,tool:null,editorTemplateId:null,recipients:[],signingMode:'sequential',signToken:new URLSearchParams(location.search).get('token'),inviteToken:new URLSearchParams(location.search).get('invite'),completedMode:new URLSearchParams(location.search).get('completed')==='1',signingBusy:false};
-const $=s=>document.querySelector(s); const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-function toast(m){const e=document.createElement('div');e.className='toast';e.textContent=m;$('#toastRoot').append(e);setTimeout(()=>e.remove(),2600)}
-async function api(action,data={}){try{const r=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,token:state.token,data})});const j=await r.json();if(!j.success&&j.error==='UNAUTHORIZED'){logoutLocal();}return j}catch(e){return{success:false,message:'Could not reach the SignedIt backend.'}}}
-function logoutLocal(){state.token='';state.user=null;localStorage.removeItem('si_token');localStorage.removeItem('si_user');render()}
-function initials(n){return String(n||'U').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()}
-function authRequired(){if(!state.token){showLogin();return false}return true}
-function showLogin(){modal(`<h2>Log in to SignedIt</h2><div class="sub">Only administrators and team users have accounts.</div><label>Email</label><input id="mEmail" type="email"><label>Password</label><input id="mPass" type="password"><div id="mErr" class="small"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="doLogin()">Log in</button></div>`)}
-function modal(html){$('#modalRoot').innerHTML=`<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${html}</div></div>`}function closeModal(){$('#modalRoot').innerHTML=''}
-async function doLogin(){const email=$('#mEmail').value,password=$('#mPass').value,r=await api('login',{email,password});if(!r.success){$('#mErr').textContent=r.message;return}state.token=r.data.token;state.user=r.data;localStorage.setItem('si_token',state.token);localStorage.setItem('si_user',JSON.stringify(state.user));closeModal();render();toast('Welcome back.')}
-async function doLogout(){await api('logout');logoutLocal()}
-function render(){if(state.signToken&&state.completedMode){renderCompletedDocument();return}if(state.signToken){renderSigner();return}if(state.inviteToken&&!state.token){renderInvite();return}if(!state.token){renderLanding();return}if(String(state.user?.role||'').toLowerCase()==='developer'){renderDeveloper();return}if(state.view==='editor')renderEditor();else renderApp()}
+
+const state={
+  token:localStorage.getItem('si_token')||'',
+  user:JSON.parse(localStorage.getItem('si_user')||'null'),
+  view:'dashboard',
+  section:'saved',
+  templates:[],
+  dashboard:null,
+  pdf:null,
+  fields:[],
+  pages:[],
+  selected:null,
+  tool:null,
+  editorTemplateId:null,
+  recipients:[],
+  signingMode:'sequential',
+  signToken:new URLSearchParams(location.search).get('token'),
+  inviteToken:new URLSearchParams(location.search).get('invite'),
+  completedMode:new URLSearchParams(location.search).get('completed')==='1',
+  signingBusy:false
+};
+
+const $=s=>document.querySelector(s);
+
+const esc=s=>String(s??'').replace(
+  /[&<>'"]/g,
+  c=>({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    "'":'&#39;',
+    '"':'&quot;'
+  }[c])
+);
+
+function toast(m){
+  const e=document.createElement('div');
+  e.className='toast';
+  e.textContent=m;
+  $('#toastRoot').append(e);
+  setTimeout(()=>e.remove(),2600);
+}
+
+async function api(action,data={}){
+  try{
+    const r=await fetch(API,{
+      method:'POST',
+      headers:{
+        'Content-Type':'text/plain;charset=utf-8'
+      },
+      body:JSON.stringify({
+        action,
+        token:state.token,
+        data
+      })
+    });
+
+    const j=await r.json();
+
+    if(!j.success&&j.error==='UNAUTHORIZED'){
+      logoutLocal();
+    }
+
+    return j;
+
+  }catch(e){
+    return{
+      success:false,
+      message:'Could not reach the SignedIt backend.'
+    };
+  }
+}
+
+function logoutLocal(){
+  state.token='';
+  state.user=null;
+  localStorage.removeItem('si_token');
+  localStorage.removeItem('si_user');
+  render();
+}
+
+function initials(n){
+  return String(n||'U')
+    .split(/\s+/)
+    .slice(0,2)
+    .map(x=>x[0])
+    .join('')
+    .toUpperCase();
+}
+
+function authRequired(){
+  if(!state.token){
+    showLogin();
+    return false;
+  }
+  return true;
+}
+
+function showLogin(){
+  modal(`
+    <h2>Log in to SignedIt</h2>
+    <div class="sub">
+      Only administrators and team users have accounts.
+    </div>
+
+    <label>Email</label>
+    <input id="mEmail" type="email">
+
+    <label>Password</label>
+    <input id="mPass" type="password">
+
+    <div id="mErr" class="small"></div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn dark" onclick="doLogin()">Log in</button>
+    </div>
+  `);
+}
+
+function modal(html){
+  $('#modalRoot').innerHTML=`
+    <div class="modal" onclick="if(event.target===this)closeModal()">
+      <div class="modal-card">${html}</div>
+    </div>
+  `;
+}
+
+function closeModal(){
+  $('#modalRoot').innerHTML='';
+}
+
+async function doLogin(){
+
+  const email=$('#mEmail').value;
+  const password=$('#mPass').value;
+
+  const r=await api('login',{
+    email,
+    password
+  });
+
+  if(!r.success){
+    $('#mErr').textContent=r.message;
+    return;
+  }
+
+  state.token=r.data.token;
+  state.user=r.data;
+
+  localStorage.setItem(
+    'si_token',
+    state.token
+  );
+
+  localStorage.setItem(
+    'si_user',
+    JSON.stringify(state.user)
+  );
+
+  closeModal();
+  render();
+  toast('Welcome back.');
+}
+
+async function doLogout(){
+  await api('logout');
+  logoutLocal();
+}
+
+function render(){
+
+  if(state.signToken&&state.completedMode){
+    renderCompletedDocument();
+    return;
+  }
+
+  if(state.signToken){
+    renderSigner();
+    return;
+  }
+
+  if(state.inviteToken&&!state.token){
+    renderInvite();
+    return;
+  }
+
+  if(!state.token){
+    renderLanding();
+    return;
+  }
+
+  if(
+    String(state.user?.role||'').toLowerCase()==='developer'
+  ){
+    renderDeveloper();
+    return;
+  }
+
+  if(state.view==='editor'){
+    renderEditor();
+  }else{
+    renderApp();
+  }
+}
+
+/* =========================================================
+   HEADQUARTERS
+   ========================================================= */
+
 function renderDeveloper(){
-  $('#app').innerHTML=`<header class="top"><div class="brand">SignedIt</div><nav class="nav"><button class="active">Headquarters</button></nav><div class="spacer"></div><div class="userbox"><div class="avatar">${initials(state.user?.name)}</div><div><b>${esc(state.user?.name)}</b><small>Developer</small></div></div><button class="btn" onclick="doLogout()">Log out</button></header><main id="hqMain"></main>`;
+
+  $('#app').innerHTML=`
+    <header class="top">
+
+      <div class="brand">
+        SignedIt
+      </div>
+
+      <nav class="nav">
+        <button class="active">
+          Headquarters
+        </button>
+      </nav>
+
+      <div class="spacer"></div>
+
+      <div class="userbox">
+
+        <div class="avatar">
+          ${initials(state.user?.name)}
+        </div>
+
+        <div>
+          <b>${esc(state.user?.name)}</b>
+          <small>Developer</small>
+        </div>
+
+      </div>
+
+      <button class="btn" onclick="doLogout()">
+        Log out
+      </button>
+
+    </header>
+
+    <main id="hqMain"></main>
+  `;
+
   loadDeveloperDashboard();
 }
 
 async function loadDeveloperDashboard(){
+
   const m=$('#hqMain');
-  m.innerHTML='<div class="hq-wrap"><div class="sub">Loading Headquarters…</div></div>';
+
+  m.innerHTML=
+    '<div class="hq-wrap"><div class="sub">Loading Headquarters…</div></div>';
+
   const r=await api('developerDashboard');
-  if(!r.success){m.innerHTML=`<div class="hq-wrap"><div class="empty">${esc(r.message)}</div></div>`;return;}
-  const d=r.data, s=d.stats||{};
-  m.innerHTML=`<div class="hq-wrap">
-    <div class="hq-top"><div><h1 class="hq-title">SignedIt Headquarters</h1><div class="sub">Platform overview and client company management</div></div><button class="btn dark" onclick="showOnboardCompany()">+ Onboard company</button></div>
-    <div class="hq-grid">
-      ${hqStat('Companies',s.companies||0)}${hqStat('Active',s.activeCompanies||0)}${hqStat('Trial',s.trialCompanies||0)}${hqStat('Suspended',s.suspendedCompanies||0)}
-      ${hqStat('Users',s.users||0)}${hqStat('Active users',s.activeUsers||0)}${hqStat('Documents sent',s.documentsSent||0)}${hqStat('Completed',s.documentsCompleted||0)}
-    </div>
-    <div class="page-title"><div><h1 style="font:500 25px Georgia,serif;margin:0 0 5px">Onboarded companies</h1><div class="sub">Client metadata and usage only. Customer document files are not exposed in Headquarters.</div></div></div>
-    <div class="hq-table">
-      <div class="hq-row hq-head"><div>Company</div><div>Status</div><div>Plan</div><div>Users</div><div>Active</div><div>Sent</div><div>Completed</div><div></div></div>
-      ${d.companies.length?d.companies.map(hqCompanyRow).join(''):`<div class="hq-empty">No client companies have been onboarded yet.</div>`}
-    </div>
-  </div>`;
-}
-function hqStat(label,value){return `<div class="hq-stat"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`}
-function hqCompanyRow(c){return `<div class="hq-row"><div><div class="hq-company">${esc(c.name)}</div><div class="hq-muted">${esc(c.primaryAdminEmail||'No admin email')}</div></div><div><span class="status-pill ${esc(String(c.status||'trial').toLowerCase())}">${esc(c.status||'Trial')}</span></div><div>${esc(c.plan||'Standard')}</div><div>${esc(c.totalUsers||0)}</div><div>${esc(c.activeUsers||0)}</div><div>${esc(c.documentsSent||0)}</div><div>${esc(c.documentsCompleted||0)}</div><div><button class="btn" onclick="manageCompany('${c.companyId}')">Manage</button></div></div>`}
-function manageCompany(companyId){
-  modal('<h2>Loading company…</h2><div class="sub">Fetching company account details.</div>');
-  api('getHQCompany',{companyId}).then(r=>{if(!r.success){closeModal();toast(r.message);return}closeModal();renderCompanyManage(r.data);});
-}
-function renderCompanyManage(d){
-  const c=d.company,u=d.usage||{},m=document.querySelector('#hqMain');
-  m.innerHTML=`<div class="hq-wrap"><div class="hq-top"><div><button class="btn" onclick="loadDeveloperDashboard()">← Back to Headquarters</button><h1 class="hq-title" style="margin-top:16px">${esc(c.name)}</h1><div class="sub">Company account management</div></div><span class="status-pill ${esc(String(c.status).toLowerCase())}">${esc(c.status)}</span></div><div class="hq-grid">${hqStat('Users',u.users||0)}${hqStat('Active users',u.activeUsers||0)}${hqStat('Sent',u.documentsSent||0)}${hqStat('Completed',u.documentsCompleted||0)}</div><div style="display:grid;grid-template-columns:1.2fr .8fr;gap:14px"><section class="card"><h2 style="font:500 23px Georgia,serif;margin:0 0 14px">Company details</h2><div class="hq-muted" style="margin-bottom:12px">${esc(c.primaryAdminEmail||'No primary administrator email')}</div><div class="kv"><b>Status</b><span>${esc(c.status)}</span></div><div class="kv"><b>Plan</b><span>${esc(c.plan)}</span></div><div class="kv"><b>Storage</b><span>${c.driveConnected?'Client storage connected':'Not connected'}</span></div><div class="kv"><b>Created</b><span>${esc(c.createdAt?new Date(c.createdAt).toLocaleString():'—')}</span></div><div class="kv"><b>Last activity</b><span>${esc(c.lastActivityAt?new Date(c.lastActivityAt).toLocaleString():'—')}</span></div><div class="card-actions" style="margin-top:18px"><button class="btn" onclick="changeCompanyStatus('${c.companyId}','${c.status}')">Change status</button><button class="btn" onclick="changeCompanyPlan('${c.companyId}','${c.plan}')">Change plan</button><button class="btn" onclick="resendAdminInvite('${c.companyId}')">Resend Admin invite</button></div><div class="invite-note">HQ can manage the customer account and usage metadata. Customer PDFs and document contents are intentionally not shown here.</div></section><section class="card"><h2 style="font:500 23px Georgia,serif;margin:0 0 14px">Usage</h2><div class="kv"><b>Users</b><span>${esc(u.users||0)}</span></div><div class="kv"><b>Active users</b><span>${esc(u.activeUsers||0)}</span></div><div class="kv"><b>Documents sent</b><span>${esc(u.documentsSent||0)}</span></div><div class="kv"><b>Pending</b><span>${esc(u.documentsPending||0)}</span></div><div class="kv"><b>Completed</b><span>${esc(u.documentsCompleted||0)}</span></div></section></div><section class="card" style="margin-top:14px"><h2 style="font:500 23px Georgia,serif;margin:0 0 14px">Users</h2>${d.users.length?d.users.map(x=>`<div class="user-row"><div><b>${esc(x.name)}</b><small>${esc(x.email)}</small></div><div><span class="status-pill">${esc(x.role)}</span> <span class="status-pill">${esc(x.status)}</span></div></div>`).join(''):'<div class="sub">No users yet.</div>'}</section></div>`;
-}
-function changeCompanyStatus(companyId,current){modal(`<h2>Company status</h2><label>Status</label><select id="hqStatus"><option value="trial">Trial</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="cancelled">Cancelled</option></select><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="saveCompanyStatus('${companyId}')">Save</button></div>`);$('#hqStatus').value=current||'trial'}
-function changeCompanyPlan(companyId,current){modal(`<h2>Company plan</h2><label>Plan</label><select id="hqPlan"><option value="standard">Standard</option><option value="enterprise">Enterprise</option></select><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="saveCompanyPlan('${companyId}')">Save</button></div>`);$('#hqPlan').value=current||'standard'}
-async function saveCompanyPlan(companyId){const r=await api('updateCompanyPlan',{companyId,plan:$('#hqPlan').value});if(!r.success)return toast(r.message);closeModal();toast('Company plan updated.');manageCompany(companyId)}
-async function resendAdminInvite(companyId){if(!confirm('Resend the primary administrator invitation?'))return;const r=await api('resendCompanyAdminInvite',{companyId,acceptUrl:location.origin+location.pathname});if(!r.success)return toast(r.message);toast(r.data.alreadyActive?'The admin account is already active.':(r.data.sent?'Invitation sent.':'New invitation created.'));manageCompany(companyId)}
-async function saveCompanyStatus(companyId){const status=$('#hqStatus').value;const r=await api('updateCompanyStatus',{companyId,status});if(!r.success){toast(r.message);return}closeModal();toast('Company status updated.');loadDeveloperDashboard()}
-function showOnboardCompany(){
-  modal(`<h2>Onboard company</h2><div class="sub">Creates the client record and sends the first Admin invitation. SignedIt HQ does not create a document copy.</div><label>Company name</label><input id="ocName" placeholder="Company legal/business name"><label>Primary Admin name</label><input id="ocAdmin" placeholder="Full name"><label>Primary Admin email</label><input id="ocEmail" type="email" placeholder="admin@company.com"><label>Plan</label><select id="ocPlan"><option value="standard">Standard</option><option value="enterprise">Enterprise</option></select><div class="invite-note">The new company starts in Trial status. Its own Google Drive storage will be connected by the client side before documents are uploaded.</div><div id="ocErr" class="small" style="margin-top:8px"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="submitOnboardCompany()">Onboard company</button></div>`);
-}
-async function submitOnboardCompany(){
-  const companyName=$('#ocName').value.trim(),adminName=$('#ocAdmin').value.trim(),adminEmail=$('#ocEmail').value.trim();
-  if(!companyName||!adminName||!adminEmail){$('#ocErr').textContent='Complete all required fields.';return}
-  const r=await api('onboardCompany',{companyName,adminName,adminEmail,plan:$('#ocPlan').value,acceptUrl:location.origin+location.pathname});
-  if(!r.success){$('#ocErr').textContent=r.message;return}
-  closeModal();toast(r.data.inviteSent?'Company onboarded and Admin invitation sent.':'Company onboarded.');loadDeveloperDashboard();
-}
-function renderInvite(){
-  $('#app').innerHTML=`<div style="min-height:100vh;display:grid;place-items:center;padding:20px"><div class="modal-card" style="width:min(500px,94vw)"><div class="brand" style="font-size:32px;margin-bottom:12px">SignedIt</div><h2>Activate your account</h2><div class="sub">Create your password to access your company workspace.</div><label>Name</label><input id="ivName" placeholder="Your full name"><label>Email</label><input id="ivEmail" type="email" placeholder="you@company.com"><label>Password</label><input id="ivPass" type="password" placeholder="At least 8 characters"><label>Confirm password</label><input id="ivPass2" type="password"><div id="ivErr" class="small"></div><div class="modal-actions"><button class="btn dark" onclick="activateInvite()">Activate account</button></div></div></div>`;
-  // We intentionally don't expose invite metadata from a public lookup endpoint.
-  // The user can submit the token with their chosen password; the backend validates it.
-  loadInviteInfo();
-}
-async function loadInviteInfo(){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'inviteInfo',token:'',data:{token:state.inviteToken}})}).then(x=>x.json()).catch(()=>({success:false,message:'Could not load invitation details.'}));if(!r.success){const e=$('#ivErr');if(e)e.textContent=r.message||'Could not load invitation details.';return}const nameEl=$('#ivName'),emailEl=$('#ivEmail');if(nameEl&&!nameEl.value)nameEl.value=r.data.name||'';if(emailEl&&!emailEl.value)emailEl.value=r.data.email||'';}
-async function activateInvite(){const name=$('#ivName').value.trim(),email=$('#ivEmail').value.trim().toLowerCase(),p=$('#ivPass').value,p2=$('#ivPass2').value;if(!name||!email){$('#ivErr').textContent='Please enter your name and email.';return}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){$('#ivErr').textContent='Please enter a valid email address.';return}if(p.length<8){$('#ivErr').textContent='Password must be at least 8 characters.';return}if(p!==p2){$('#ivErr').textContent='Passwords do not match.';return}const r=await api('acceptInvite',{token:state.inviteToken,name,email,password:p});if(!r.success){$('#ivErr').textContent=r.message;return}$('#app').innerHTML=`<div style="min-height:100vh;display:grid;place-items:center"><div class="modal-card" style="text-align:center"><div class="brand" style="font-size:32px;margin-bottom:12px">SignedIt</div><h2>Account activated</h2><div class="sub">Your account is ready. You can now log in.</div><div class="modal-actions"><button class="btn dark" onclick="history.replaceState({},'',location.pathname);state.inviteToken=null;showLogin()">Log in</button></div></div></div>`}
 
-function renderLanding(){$('#app').innerHTML=`<div style="min-height:100vh;display:grid;place-items:center"><div style="text-align:center;max-width:540px;padding:30px"><div class="brand" style="font-size:38px;margin-bottom:15px">SignedIt</div><h1 style="font:500 34px Georgia,serif">Simple, controlled e-signing.</h1><p class="sub" style="line-height:1.7">Create templates and send documents from one elegant workspace. Signers receive a secure link and do not need a SignedIt account.</p><button class="btn dark" onclick="showLogin()">Log in</button></div></div>`}
-function renderApp(){const u=state.user||{};$('#app').innerHTML=`<header class="top"><div class="brand">SignedIt</div><nav class="nav"><button class="active">Workspace</button></nav><div class="spacer"></div><div class="userbox"><div class="avatar">${initials(u.name)}</div><div><b>${esc(u.name)}</b><small>${esc(u.role)}</small></div></div><button class="btn" onclick="doLogout()">Log out</button></header><div class="shell"><aside class="side"><h4>Workspace</h4>${sideBtn('saved','Saved')}${sideBtn('created','Created by Me')}${sideBtn('shared','Shared with Me')}${sideBtn('recent','Recently Used')}${sideBtn('favorites','Favorites')}<h4 style="margin-top:25px">Signing</h4>${sideBtn('action','Action Required')}${sideBtn('pending','Pending')}${sideBtn('completed','Completed')}<h4 style="margin-top:25px">Manage</h4>${sideBtn('templates','Templates')}${u.role==='admin'?sideBtn('team','Team'):''}</aside><main class="main" id="main"></main></div>`;loadDashboard()}
-function sideBtn(k,label){return `<button class="${state.section===k?'active':''}" onclick="state.section='${k}';loadDashboard()">${label}<span class="count"></span></button>`}
-async function loadDashboard(){const m=$('#main');m.innerHTML='<div class="sub">Loading workspace…</div>';const r=await api('listDashboard');if(!r.success){m.innerHTML=`<div class="empty">${esc(r.message)}</div>`;return}state.dashboard=r.data;let list=[];let title='Saved';if(state.section==='created'){list=r.data.createdByMe;title='Created by Me'}else if(state.section==='shared'){list=r.data.sharedWithMe;title='Shared with Me'}else if(state.section==='recent'){list=r.data.recentlyUsed;title='Recently Used'}else if(state.section==='favorites'){list=r.data.favorites;title='Favorites'}else if(state.section==='templates'){list=r.data.saved;title='Templates'}else{list=r.data.saved;title='Saved'}m.innerHTML=`<div class="page-title"><div><h1>${title}</h1><div class="sub">Your SignedIt workspace</div></div><div><button class="btn dark" onclick="newTemplate()">+ Create template</button></div></div>${!r.data.storageConnected&&state.user.role==='admin'?'<div class="invite-note" style="margin-bottom:16px"><b>Connect your company storage.</b> SignedIt is designed to keep company documents in a client-owned Google Drive folder. <button class="btn" style="margin-left:8px" onclick="showStorageSetup()">Connect Drive</button></div>':''}${list.length?`<div class="cards">${list.map(t=>templateCard(t)).join('')}</div>`:`<div class="empty"><b>No ${title.toLowerCase()} yet.</b><div style="margin-top:7px">Create a template to get started.</div></div>`}`}
-function templateCard(t){return `<div class="card template-card"><div><div style="display:flex;justify-content:space-between;gap:8px"><div class="template-name">${esc(t.name)}</div><button class="star ${t.isFavorite?'on':''}" onclick="event.stopPropagation();fav('${t.templateId}')">★</button></div><div class="meta" style="margin-top:6px">Updated ${new Date(t.updatedAt||t.createdAt).toLocaleString()}</div></div><div class="card-actions"><button class="btn" onclick="openTemplate('${t.templateId}')">Open</button><button class="btn" onclick="startSend('${t.templateId}')">Send</button></div></div>`}
-async function fav(id){const r=await api('toggleFavorite',{itemId:id,itemType:'template'});if(r.success)loadDashboard()}
-function showStorageSetup(){
-  modal(`<h2>Connect company storage</h2><div class="sub">Use a Google Drive folder owned by your company. SignedIt stores the folder ID as the document location; it does not create a developer/HQ copy.</div><label>Google Drive folder ID</label><input id="storageId" placeholder="Paste the folder ID"><div class="invite-note">The Google account running the SignedIt Apps Script must have access to this folder. For stronger separation, use a folder owned by the client company and grant only the required access.</div><div id="storageErr" class="small"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="connectStorage()">Connect folder</button></div>`);
-}
-async function connectStorage(){const driveFolderId=$('#storageId').value.trim();if(!driveFolderId){$('#storageErr').textContent='Paste a Google Drive folder ID.';return}const r=await api('connectCompanyStorage',{driveFolderId});if(!r.success){$('#storageErr').textContent=r.message;return}closeModal();toast('Company storage connected.');loadDashboard()}
-
-async function newTemplate(){const input=document.createElement('input');input.type='file';input.accept='application/pdf';input.onchange=async()=>{const f=input.files[0];if(!f)return;state.editorTemplateId=null;state.fields=[];await loadEditorPdf(await f.arrayBuffer());state.view='editor';render()};input.click()}
-async function openTemplate(id){const r=await api('getTemplate',{templateId:id});if(!r.success)return toast(r.message);state.editorTemplateId=id;state.fields=r.data.fields;await loadEditorPdf(fromB64(r.data.pdfBase64));state.editorName=r.data.name;state.view='editor';render()}
-function fromB64(s){const b=Uint8Array.from(atob(s),c=>c.charCodeAt(0));return b.buffer}function toB64(buf){const b=new Uint8Array(buf);let s='';for(let i=0;i<b.length;i+=0x8000)s+=String.fromCharCode(...b.subarray(i,i+0x8000));return btoa(s)}
-async function loadEditorPdf(buf){state.pdf=buf;const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0))}).promise;state.pages=[];state.renderedPages=[];const holder=document.createElement('div');holder.innerHTML='';for(let n=1;n<=pdf.numPages;n++){const p=await pdf.getPage(n),vp=p.getViewport({scale:1.5}),canvas=document.createElement('canvas');canvas.width=vp.width;canvas.height=vp.height;await p.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;const page=document.createElement('div');page.className='doc-page';const ov=document.createElement('div');ov.className='overlay';ov.dataset.page=n-1;page.append(canvas,ov);state.pages.push({ov,ratio:vp.width/vp.height});holder.append(page)}state.renderedPages=Array.from(holder.children);}
-function renderEditor(){if(!state.renderedPages){renderLanding();return}$('#app').innerHTML=`<div class="editor-top"><button class="btn" onclick="state.view='dashboard';render()">← Back</button><div class="editor-name">${esc(state.editorName||'Untitled template')}</div><div class="spacer"></div><button class="btn" onclick="saveTemplate()">Save</button><button class="btn dark" onclick="startSend(state.editorTemplateId)">Send</button></div><div class="editor-layout"><aside class="toolbox"><div class="toolgroup"><h5>Standard</h5>${tool('signature','Signature')}${tool('initials','Initials')}${tool('name','Name')}${tool('email','Email')}${tool('date','Date')}</div><div class="toolgroup"><h5>Input</h5>${tool('text','Text')}${tool('long_text','Long text')}${tool('number','Number')}${tool('address','Address')}</div><div class="toolgroup"><h5>Selection</h5>${tool('checkbox','Checkbox')}${tool('dropdown','Dropdown')}${tool('radio','Radio')}</div><div class="toolgroup"><h5>Company</h5>${tool('company','Company')}${tool('job_title','Job title')}</div></aside><main class="canvas-wrap" id="canvasWrap"></main><aside class="properties" id="properties"><div class="small">Select a field to edit its properties.</div></aside></div>`;const cw=$('#canvasWrap');state.renderedPages.forEach(p=>cw.append(p));state.pages=state.renderedPages.map((p,i)=>({ov:p.querySelector('.overlay'),ratio:state.pages[i]?.ratio||1}));state.tool=null;renderFields()}
-function tool(t,label){return `<button class="field-tool" onclick="selectTool('${t}')">${label}</button>`}
-function selectTool(t){state.tool=state.tool===t?null:t;toast(state.tool?'Click the document to place '+t:'Field tool cancelled')}
-function placeField(e,ov){if(!state.tool||e.target!==ov)return;const r=ov.getBoundingClientRect(),pg=state.pages[+ov.dataset.page];const sizes={signature:[.28,.07],initials:[.12,.05],text:[.25,.04],long_text:[.35,.09],number:[.16,.04],name:[.25,.04],email:[.28,.04],date:[.18,.04],checkbox:[.035,.035],dropdown:[.25,.04],radio:[.05,.05],address:[.35,.08],company:[.25,.04],job_title:[.25,.04]};const [w,h]=sizes[state.tool]||[.2,.04],x=Math.max(0,Math.min((e.clientX-r.left)/r.width,1-w)),y=Math.max(0,Math.min((e.clientY-r.top)/r.height,1-h));state.fields.push({id:crypto.randomUUID?.()||Math.random().toString(36).slice(2),type:state.tool,page:+ov.dataset.page,x,y,w,h,required:state.tool!=='checkbox',recipientRole:'1',value:state.tool==='checkbox'?false:'',properties:{options:['Option 1','Option 2'],radioGroup:'group1'}});state.tool=null;renderFields()}
-function renderFields(){state.pages.forEach(p=>{p.ov.innerHTML='';p.ov.onclick=e=>placeField(e,p.ov)});state.fields.forEach(f=>{const el=document.createElement('div');el.className='field'+(state.selected===f.id?' selected':'');el.style.cssText=`left:${f.x*100}%;top:${f.y*100}%;width:${f.w*100}%;height:${f.h*100}%`;el.onclick=e=>{e.stopPropagation();state.selected=f.id;renderFields()};const del=document.createElement('button');del.className='delete';del.textContent='×';del.onclick=e=>{e.stopPropagation();state.fields=state.fields.filter(x=>x.id!==f.id);state.selected=null;renderFields()};el.append(del);const tag=document.createElement('div');tag.className='tag';tag.textContent=f.type==='checkbox'?'☐':f.type.replace('_',' ');el.append(tag);const rz=document.createElement('div');rz.className='resize';rz.onpointerdown=e=>dragField(e,f,el,'resize');el.append(rz);el.onpointerdown=e=>{if(e.target===del||e.target===rz)return;dragField(e,f,el,'move')};state.pages[f.page]?.ov.append(el)});renderProperties()}
-function dragField(e,f,el,kind){e.preventDefault();e.stopPropagation();state.selected=f.id;const r=el.parentElement.getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=f.x,oy=f.y,ow=f.w,oh=f.h;const move=ev=>{const dx=(ev.clientX-sx)/r.width,dy=(ev.clientY-sy)/r.height;if(kind==='move'){f.x=Math.min(Math.max(ox+dx,0),1-f.w);f.y=Math.min(Math.max(oy+dy,0),1-f.h)}else{f.w=Math.min(Math.max(ow+dx,.02),1-f.x);f.h=Math.min(Math.max(oh+dy,.02),1-f.y)}el.style.left=f.x*100+'%';el.style.top=f.y*100+'%';el.style.width=f.w*100+'%';el.style.height=f.h*100+'%';};const up=()=>{removeEventListener('pointermove',move);removeEventListener('pointerup',up);renderProperties()};addEventListener('pointermove',move);addEventListener('pointerup',up)}
-function renderProperties(){const p=$('#properties');if(!p)return;const f=state.fields.find(x=>x.id===state.selected);if(!f){p.innerHTML='<div class="small">Select a field to edit its properties.</div>';return}p.innerHTML=`<div class="prop"><h3>${esc(f.type.replace('_',' '))}</h3><label>Assigned signer</label><select id="pRecipient"><option value="1" ${f.recipientRole==='1'?'selected':''}>Signer 1</option><option value="2" ${f.recipientRole==='2'?'selected':''}>Signer 2</option><option value="3" ${f.recipientRole==='3'?'selected':''}>Signer 3</option></select><label>Required</label><select id="pReq"><option value="1" ${f.required?'selected':''}>Required</option><option value="0" ${!f.required?'selected':''}>Optional</option></select>${f.type==='dropdown'?'<label>Dropdown options (one per line)</label><textarea id="pOpts" rows="6">'+esc((f.properties?.options||[]).join('\n'))+'</textarea>':''}${f.type==='number'?'<label>Number rules</label><div class="small">Numbers only are enforced during signing.</div>':''}<div class="small" style="margin-top:16px">Position and size are saved automatically when the template is saved.</div></div>`;$('#pRecipient').onchange=e=>{f.recipientRole=e.target.value};$('#pReq').onchange=e=>{f.required=e.target.value==='1'};if($('#pOpts'))$('#pOpts').oninput=e=>{f.properties.options=e.target.value.split('\n').map(x=>x.trim()).filter(Boolean)} }
-async function saveTemplate(){if(!state.pdf)return;const name=state.editorName||prompt('Template name:','Untitled template');if(!name)return;state.editorName=name;const r=await api('saveTemplate',{name,pdfBase64:toB64(state.pdf),fields:state.fields.map(f=>({page:f.page,type:f.type,x:f.x,y:f.y,w:f.w,h:f.h,required:f.required,recipientRole:f.recipientRole,properties:f.properties}))});if(!r.success)return toast(r.message);state.editorTemplateId=r.data.templateId;toast('Template saved.');}
-function startSend(templateId){if(!templateId){toast('Save the template before sending.');return}state.recipients=[{name:'',email:''}];state.signingMode='sequential';modal(`<h2>Send document</h2><div class="sub">Add signers and choose their signing order.</div><label>Signing mode</label><select id="sendMode"><option value="sequential">Sequential — one signer at a time</option><option value="parallel">Parallel — all signers at once</option></select><div id="recList"></div><button class="btn" onclick="addRecRow()">+ Add signer</button><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="createAndSend('${templateId}')">Create & send</button></div>`);renderRecRows()}
-function renderRecRows(){const box=$('#recList');if(!box)return;box.innerHTML=state.recipients.map((r,i)=>`<div class="card" style="margin:10px 0;padding:12px"><b>Signer ${i+1}</b><input id="rn${i}" placeholder="Full name" value="${esc(r.name)}"><input id="re${i}" placeholder="Email" value="${esc(r.email)}"></div>`).join('')}
-function addRecRow(){state.recipients.push({name:'',email:''});renderRecRows()}
-async function createAndSend(templateId){state.recipients=state.recipients.map((r,i)=>({name:$('#rn'+i).value,email:$('#re'+i).value}));if(state.recipients.some(r=>!r.name||!r.email)){toast('Complete every signer.');return}const mode=$('#sendMode').value,r=await api('createEnvelope',{templateId,signingMode:mode,recipients:state.recipients});if(!r.success)return toast(r.message);const send=await api('sendEnvelope',{envelopeId:r.data.envelopeId,signingUrl:location.origin+location.pathname});if(!send.success)return toast(send.message);closeModal();toast('Document sent.');}
-/* signer */
-async function renderSigner(){
-  const r=await api('signingSession',{token:state.signToken});
   if(!r.success){
-    const alreadySigned=r.error==='ALREADY_SIGNED';
-    $('#app').innerHTML=`<div class="sign-shell"><div class="empty"><div class="brand" style="margin-bottom:12px">SignedIt</div><h2 style="font:500 25px Georgia,serif">${alreadySigned?'Signing already completed.':'Signing link unavailable.'}</h2><div style="margin-top:7px">${esc(r.message)}</div>${alreadySigned?'<div style="margin-top:10px">You cannot edit or submit this signing step again.</div>':''}</div></div>`;
+
+    m.innerHTML=`
+      <div class="hq-wrap">
+        <div class="empty">
+          ${esc(r.message)}
+        </div>
+      </div>
+    `;
+
     return;
   }
+
+  const d=r.data;
+  const s=d.stats||{};
+
+  m.innerHTML=`
+    <div class="hq-wrap">
+
+      <div class="hq-top">
+
+        <div>
+
+          <h1 class="hq-title">
+            SignedIt Headquarters
+          </h1>
+
+          <div class="sub">
+            Platform overview and client company management
+          </div>
+
+        </div>
+
+        <button
+          class="btn dark"
+          onclick="showOnboardCompany()"
+        >
+          + Onboard company
+        </button>
+
+      </div>
+
+      <div class="hq-grid">
+
+        ${hqStat('Companies',s.companies||0)}
+        ${hqStat('Active',s.activeCompanies||0)}
+        ${hqStat('Trial',s.trialCompanies||0)}
+        ${hqStat('Suspended',s.suspendedCompanies||0)}
+
+        ${hqStat('Users',s.users||0)}
+        ${hqStat('Active users',s.activeUsers||0)}
+        ${hqStat('Documents sent',s.documentsSent||0)}
+        ${hqStat('Completed',s.documentsCompleted||0)}
+
+      </div>
+
+      <div class="page-title">
+
+        <div>
+
+          <h1 style="font:500 25px Georgia,serif;margin:0 0 5px">
+            Onboarded companies
+          </h1>
+
+          <div class="sub">
+            Client metadata and usage only.
+            Customer document files are not exposed in Headquarters.
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="hq-table">
+
+        <div class="hq-row hq-head">
+
+          <div>Company</div>
+          <div>Status</div>
+          <div>Plan</div>
+          <div>Users</div>
+          <div>Active</div>
+          <div>Sent</div>
+          <div>Completed</div>
+          <div></div>
+
+        </div>
+
+        ${
+          d.companies.length
+          ?
+          d.companies.map(hqCompanyRow).join('')
+          :
+          `
+          <div class="hq-empty">
+            No client companies have been onboarded yet.
+          </div>
+          `
+        }
+
+      </div>
+
+    </div>
+  `;
+}
+
+function hqStat(label,value){
+  return `
+    <div class="hq-stat">
+      <div class="label">${label}</div>
+      <div class="value">${esc(value)}</div>
+    </div>
+  `;
+}
+
+function hqCompanyRow(c){
+
+  return `
+    <div class="hq-row">
+
+      <div>
+
+        <div class="hq-company">
+          ${esc(c.name)}
+        </div>
+
+        <div class="hq-muted">
+          ${esc(c.primaryAdminEmail||'No admin email')}
+        </div>
+
+      </div>
+
+      <div>
+        <span class="status-pill ${esc(String(c.status||'trial').toLowerCase())}">
+          ${esc(c.status||'Trial')}
+        </span>
+      </div>
+
+      <div>
+        ${esc(c.plan||'Standard')}
+      </div>
+
+      <div>
+        ${esc(c.totalUsers||0)}
+      </div>
+
+      <div>
+        ${esc(c.activeUsers||0)}
+      </div>
+
+      <div>
+        ${esc(c.documentsSent||0)}
+      </div>
+
+      <div>
+        ${esc(c.documentsCompleted||0)}
+      </div>
+
+      <div>
+        <button
+          class="btn"
+          onclick="manageCompany('${c.companyId}')"
+        >
+          Manage
+        </button>
+      </div>
+
+    </div>
+  `;
+}
+
+function manageCompany(companyId){
+
+  modal(`
+    <h2>Loading company…</h2>
+    <div class="sub">
+      Fetching company account details.
+    </div>
+  `);
+
+  api('getHQCompany',{companyId}).then(r=>{
+
+    if(!r.success){
+      closeModal();
+      toast(r.message);
+      return;
+    }
+
+    closeModal();
+    renderCompanyManage(r.data);
+
+  });
+}
+
+function renderCompanyManage(d){
+
+  const c=d.company;
+  const u=d.usage||{};
+  const m=document.querySelector('#hqMain');
+
+  m.innerHTML=`
+
+    <div class="hq-wrap">
+
+      <div class="hq-top">
+
+        <div>
+
+          <button
+            class="btn"
+            onclick="loadDeveloperDashboard()"
+          >
+            ← Back to Headquarters
+          </button>
+
+          <h1
+            class="hq-title"
+            style="margin-top:16px"
+          >
+            ${esc(c.name)}
+          </h1>
+
+          <div class="sub">
+            Company account management
+          </div>
+
+        </div>
+
+        <span class="status-pill ${esc(String(c.status).toLowerCase())}">
+          ${esc(c.status)}
+        </span>
+
+      </div>
+
+      <div class="hq-grid">
+
+        ${hqStat('Users',u.users||0)}
+        ${hqStat('Active users',u.activeUsers||0)}
+        ${hqStat('Sent',u.documentsSent||0)}
+        ${hqStat('Completed',u.documentsCompleted||0)}
+
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:14px">
+
+        <section class="card">
+
+          <h2 style="font:500 23px Georgia,serif;margin:0 0 14px">
+            Company details
+          </h2>
+
+          <div class="hq-muted" style="margin-bottom:12px">
+            ${esc(c.primaryAdminEmail||'No primary administrator email')}
+          </div>
+
+          <div class="kv">
+            <b>Status</b>
+            <span>${esc(c.status)}</span>
+          </div>
+
+          <div class="kv">
+            <b>Plan</b>
+            <span>${esc(c.plan)}</span>
+          </div>
+
+          <div class="kv">
+            <b>Storage</b>
+            <span>
+              ${
+                c.driveConnected
+                ?
+                '✓ Storage configured'
+                :
+                'Storage pending'
+              }
+            </span>
+          </div>
+
+          <div class="kv">
+            <b>Created</b>
+            <span>
+              ${esc(c.createdAt?new Date(c.createdAt).toLocaleString():'—')}
+            </span>
+          </div>
+
+          <div class="kv">
+            <b>Last activity</b>
+            <span>
+              ${esc(c.lastActivityAt?new Date(c.lastActivityAt).toLocaleString():'—')}
+            </span>
+          </div>
+
+          <div class="card-actions" style="margin-top:18px">
+
+            <button
+              class="btn"
+              onclick="changeCompanyStatus('${c.companyId}','${c.status}')"
+            >
+              Change status
+            </button>
+
+            <button
+              class="btn"
+              onclick="changeCompanyPlan('${c.companyId}','${c.plan}')"
+            >
+              Change plan
+            </button>
+
+            <button
+              class="btn"
+              onclick="resendAdminInvite('${c.companyId}')"
+            >
+              Resend Admin invite
+            </button>
+
+          </div>
+
+          <div class="invite-note">
+            HQ can manage the customer account and usage metadata.
+            Customer PDFs and document contents are intentionally not shown here.
+          </div>
+
+        </section>
+
+        <section class="card">
+
+          <h2 style="font:500 23px Georgia,serif;margin:0 0 14px">
+            Usage
+          </h2>
+
+          <div class="kv">
+            <b>Users</b>
+            <span>${esc(u.users||0)}</span>
+          </div>
+
+          <div class="kv">
+            <b>Active users</b>
+            <span>${esc(u.activeUsers||0)}</span>
+          </div>
+
+          <div class="kv">
+            <b>Documents sent</b>
+            <span>${esc(u.documentsSent||0)}</span>
+          </div>
+
+          <div class="kv">
+            <b>Pending</b>
+            <span>${esc(u.documentsPending||0)}</span>
+          </div>
+
+          <div class="kv">
+            <b>Completed</b>
+            <span>${esc(u.documentsCompleted||0)}</span>
+          </div>
+
+        </section>
+
+      </div>
+
+      <section class="card" style="margin-top:14px">
+
+        <h2 style="font:500 23px Georgia,serif;margin:0 0 14px">
+          Users
+        </h2>
+
+        ${
+          d.users.length
+          ?
+          d.users.map(x=>`
+            <div class="user-row">
+
+              <div>
+
+                <b>${esc(x.name)}</b>
+
+                <small>
+                  ${esc(x.email)}
+                </small>
+
+              </div>
+
+              <div>
+
+                <span class="status-pill">
+                  ${esc(x.role)}
+                </span>
+
+                <span class="status-pill">
+                  ${esc(x.status)}
+                </span>
+
+              </div>
+
+            </div>
+          `).join('')
+          :
+          '<div class="sub">No users yet.</div>'
+        }
+
+      </section>
+
+    </div>
+  `;
+}
+
+function changeCompanyStatus(companyId,current){
+
+  modal(`
+    <h2>Company status</h2>
+
+    <label>Status</label>
+
+    <select id="hqStatus">
+      <option value="trial">Trial</option>
+      <option value="active">Active</option>
+      <option value="suspended">Suspended</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+
+    <div class="modal-actions">
+
+      <button
+        class="btn"
+        onclick="closeModal()"
+      >
+        Cancel
+      </button>
+
+      <button
+        class="btn dark"
+        onclick="saveCompanyStatus('${companyId}')"
+      >
+        Save
+      </button>
+
+    </div>
+  `);
+
+  $('#hqStatus').value=current||'trial';
+}
+
+function changeCompanyPlan(companyId,current){
+
+  modal(`
+    <h2>Company plan</h2>
+
+    <label>Plan</label>
+
+    <select id="hqPlan">
+      <option value="standard">Standard</option>
+      <option value="enterprise">Enterprise</option>
+    </select>
+
+    <div class="modal-actions">
+
+      <button
+        class="btn"
+        onclick="closeModal()"
+      >
+        Cancel
+      </button>
+
+      <button
+        class="btn dark"
+        onclick="saveCompanyPlan('${companyId}')"
+      >
+        Save
+      </button>
+
+    </div>
+  `);
+
+  $('#hqPlan').value=current||'standard';
+}
+
+async function saveCompanyPlan(companyId){
+
+  const r=await api(
+    'updateCompanyPlan',
+    {
+      companyId,
+      plan:$('#hqPlan').value
+    }
+  );
+
+  if(!r.success){
+    return toast(r.message);
+  }
+
+  closeModal();
+  toast('Company plan updated.');
+  manageCompany(companyId);
+}
+
+async function resendAdminInvite(companyId){
+
+  if(!confirm(
+    'Resend the primary administrator invitation?'
+  ))return;
+
+  const r=await api(
+    'resendCompanyAdminInvite',
+    {
+      companyId,
+      acceptUrl:location.origin+location.pathname
+    }
+  );
+
+  if(!r.success){
+    return toast(r.message);
+  }
+
+  toast(
+    r.data.alreadyActive
+    ?
+    'The admin account is already active.'
+    :
+    (
+      r.data.sent
+      ?
+      'Invitation sent.'
+      :
+      'New invitation created.'
+    )
+  );
+
+  manageCompany(companyId);
+}
+
+async function saveCompanyStatus(companyId){
+
+  const status=$('#hqStatus').value;
+
+  const r=await api(
+    'updateCompanyStatus',
+    {
+      companyId,
+      status
+    }
+  );
+
+  if(!r.success){
+    toast(r.message);
+    return;
+  }
+
+  closeModal();
+  toast('Company status updated.');
+  loadDeveloperDashboard();
+}
+
+/* =========================================================
+   COMPANY ONBOARDING
+   ========================================================= */
+
+function showOnboardCompany(){
+
+  modal(`
+
+    <h2>
+      Onboard company
+    </h2>
+
+    <div class="sub">
+      Creates the client record, prepares its document workspace,
+      and sends the first Admin invitation.
+    </div>
+
+    <label>
+      Company name
+    </label>
+
+    <input
+      id="ocName"
+      placeholder="Company legal/business name"
+    >
+
+    <label>
+      Primary Admin name
+    </label>
+
+    <input
+      id="ocAdmin"
+      placeholder="Full name"
+    >
+
+    <label>
+      Primary Admin email
+    </label>
+
+    <input
+      id="ocEmail"
+      type="email"
+      placeholder="admin@company.com"
+    >
+
+    <label>
+      Plan
+    </label>
+
+    <select id="ocPlan">
+      <option value="standard">
+        Standard
+      </option>
+
+      <option value="enterprise">
+        Enterprise
+      </option>
+    </select>
+
+    <div class="invite-note">
+
+      The new company starts in Trial status.
+      SignedIt automatically prepares its document workspace
+      during onboarding.
+
+    </div>
+
+    <div
+      id="ocErr"
+      class="small"
+      style="margin-top:8px"
+    ></div>
+
+    <div class="modal-actions">
+
+      <button
+        class="btn"
+        onclick="closeModal()"
+      >
+        Cancel
+      </button>
+
+      <button
+        class="btn dark"
+        onclick="submitOnboardCompany()"
+      >
+        Onboard company
+      </button>
+
+    </div>
+
+  `);
+}
+
+async function submitOnboardCompany(){
+
+  const companyName=$('#ocName').value.trim();
+  const adminName=$('#ocAdmin').value.trim();
+  const adminEmail=$('#ocEmail').value.trim();
+
+  if(!companyName||!adminName||!adminEmail){
+
+    $('#ocErr').textContent=
+      'Complete all required fields.';
+
+    return;
+  }
+
+  const r=await api(
+    'onboardCompany',
+    {
+      companyName,
+      adminName,
+      adminEmail,
+      plan:$('#ocPlan').value,
+      acceptUrl:location.origin+location.pathname
+    }
+  );
+
+  if(!r.success){
+
+    $('#ocErr').textContent=
+      r.message;
+
+    return;
+  }
+
+  closeModal();
+
+  toast(
+    r.data.inviteSent
+    ?
+    'Company onboarded and Admin invitation sent.'
+    :
+    'Company onboarded.'
+  );
+
+  loadDeveloperDashboard();
+}
+
+/* =========================================================
+   INVITATION
+   ========================================================= */
+
+function renderInvite(){
+
+  $('#app').innerHTML=`
+
+    <div style="min-height:100vh;display:grid;place-items:center;padding:20px">
+
+      <div
+        class="modal-card"
+        style="width:min(500px,94vw)"
+      >
+
+        <div
+          class="brand"
+          style="font-size:32px;margin-bottom:12px"
+        >
+          SignedIt
+        </div>
+
+        <h2>
+          Activate your account
+        </h2>
+
+        <div class="sub">
+          Create your password to access your company workspace.
+        </div>
+
+        <label>
+          Name
+        </label>
+
+        <input
+          id="ivName"
+          placeholder="Your full name"
+        >
+
+        <label>
+          Email
+        </label>
+
+        <input
+          id="ivEmail"
+          type="email"
+          placeholder="you@company.com"
+        >
+
+        <label>
+          Password
+        </label>
+
+        <input
+          id="ivPass"
+          type="password"
+          placeholder="At least 8 characters"
+        >
+
+        <label>
+          Confirm password
+        </label>
+
+        <input
+          id="ivPass2"
+          type="password"
+        >
+
+        <div id="ivErr" class="small"></div>
+
+        <div class="modal-actions">
+
+          <button
+            class="btn dark"
+            onclick="activateInvite()"
+          >
+            Activate account
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  `;
+
+  loadInviteInfo();
+}
+
+async function loadInviteInfo(){
+
+  const r=await fetch(
+    API,
+    {
+      method:'POST',
+      headers:{
+        'Content-Type':'text/plain;charset=utf-8'
+      },
+      body:JSON.stringify({
+        action:'inviteInfo',
+        token:'',
+        data:{
+          token:state.inviteToken
+        }
+      })
+    }
+  )
+  .then(x=>x.json())
+  .catch(
+    ()=>({
+      success:false,
+      message:'Could not load invitation details.'
+    })
+  );
+
+  if(!r.success){
+
+    const e=$('#ivErr');
+
+    if(e){
+      e.textContent=
+        r.message||
+        'Could not load invitation details.';
+    }
+
+    return;
+  }
+
+  const nameEl=$('#ivName');
+  const emailEl=$('#ivEmail');
+
+  if(nameEl&&!nameEl.value){
+    nameEl.value=r.data.name||'';
+  }
+
+  if(emailEl&&!emailEl.value){
+    emailEl.value=r.data.email||'';
+  }
+}
+
+async function activateInvite(){
+
+  const name=$('#ivName').value.trim();
+  const email=$('#ivEmail').value.trim().toLowerCase();
+  const p=$('#ivPass').value;
+  const p2=$('#ivPass2').value;
+
+  if(!name||!email){
+
+    $('#ivErr').textContent=
+      'Please enter your name and email.';
+
+    return;
+  }
+
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+
+    $('#ivErr').textContent=
+      'Please enter a valid email address.';
+
+    return;
+  }
+
+  if(p.length<8){
+
+    $('#ivErr').textContent=
+      'Password must be at least 8 characters.';
+
+    return;
+  }
+
+  if(p!==p2){
+
+    $('#ivErr').textContent=
+      'Passwords do not match.';
+
+    return;
+  }
+
+  const r=await api(
+    'acceptInvite',
+    {
+      token:state.inviteToken,
+      name,
+      email,
+      password:p
+    }
+  );
+
+  if(!r.success){
+
+    $('#ivErr').textContent=
+      r.message;
+
+    return;
+  }
+
+  $('#app').innerHTML=`
+
+    <div
+      style="min-height:100vh;display:grid;place-items:center"
+    >
+
+      <div
+        class="modal-card"
+        style="text-align:center"
+      >
+
+        <div
+          class="brand"
+          style="font-size:32px;margin-bottom:12px"
+        >
+          SignedIt
+        </div>
+
+        <h2>
+          Account activated
+        </h2>
+
+        <div class="sub">
+          Your account is ready. You can now log in.
+        </div>
+
+        <div class="modal-actions">
+
+          <button
+            class="btn dark"
+            onclick="history.replaceState({},'',location.pathname);state.inviteToken=null;showLogin()"
+          >
+            Log in
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  `;
+}
+
+/* =========================================================
+   LANDING / APP
+   ========================================================= */
+
+function renderLanding(){
+
+  $('#app').innerHTML=`
+
+    <div
+      style="min-height:100vh;display:grid;place-items:center"
+    >
+
+      <div
+        style="text-align:center;max-width:540px;padding:30px"
+      >
+
+        <div
+          class="brand"
+          style="font-size:38px;margin-bottom:15px"
+        >
+          SignedIt
+        </div>
+
+        <h1
+          style="font:500 34px Georgia,serif"
+        >
+          Simple, controlled e-signing.
+        </h1>
+
+        <p
+          class="sub"
+          style="line-height:1.7"
+        >
+          Create templates and send documents from one elegant
+          workspace. Signers receive a secure link and do not
+          need a SignedIt account.
+        </p>
+
+        <button
+          class="btn dark"
+          onclick="showLogin()"
+        >
+          Log in
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+}
+
+function renderApp(){
+
+  const u=state.user||{};
+
+  $('#app').innerHTML=`
+
+    <header class="top">
+
+      <div class="brand">
+        SignedIt
+      </div>
+
+      <nav class="nav">
+        <button class="active">
+          Workspace
+        </button>
+      </nav>
+
+      <div class="spacer"></div>
+
+      <div class="userbox">
+
+        <div class="avatar">
+          ${initials(u.name)}
+        </div>
+
+        <div>
+          <b>${esc(u.name)}</b>
+          <small>${esc(u.role)}</small>
+        </div>
+
+      </div>
+
+      <button
+        class="btn"
+        onclick="doLogout()"
+      >
+        Log out
+      </button>
+
+    </header>
+
+    <div class="shell">
+
+      <aside class="side">
+
+        <h4>
+          Workspace
+        </h4>
+
+        ${sideBtn('saved','Saved')}
+        ${sideBtn('created','Created by Me')}
+        ${sideBtn('shared','Shared with Me')}
+        ${sideBtn('recent','Recently Used')}
+        ${sideBtn('favorites','Favorites')}
+
+        <h4 style="margin-top:25px">
+          Signing
+        </h4>
+
+        ${sideBtn('action','Action Required')}
+        ${sideBtn('pending','Pending')}
+        ${sideBtn('completed','Completed')}
+
+        <h4 style="margin-top:25px">
+          Manage
+        </h4>
+
+        ${sideBtn('templates','Templates')}
+
+        ${
+          u.role==='admin'
+          ?
+          sideBtn('team','Team')
+          :
+          ''
+        }
+
+      </aside>
+
+      <main
+        class="main"
+        id="main"
+      ></main>
+
+    </div>
+
+  `;
+
+  loadDashboard();
+}
+
+function sideBtn(k,label){
+
+  return `
+    <button
+      class="${state.section===k?'active':''}"
+      onclick="state.section='${k}';loadDashboard()"
+    >
+      ${label}
+      <span class="count"></span>
+    </button>
+  `;
+}
+
+/* =========================================================
+   CLIENT DASHBOARD
+   ========================================================= */
+
+async function loadDashboard(){
+
+  const m=$('#main');
+
+  m.innerHTML=
+    '<div class="sub">Loading workspace…</div>';
+
+  const r=await api('listDashboard');
+
+  if(!r.success){
+
+    m.innerHTML=`
+      <div class="empty">
+        ${esc(r.message)}
+      </div>
+    `;
+
+    return;
+  }
+
+  state.dashboard=r.data;
+
+  let list=[];
+  let title='Saved';
+
+  if(state.section==='created'){
+
+    list=r.data.createdByMe;
+    title='Created by Me';
+
+  }else if(state.section==='shared'){
+
+    list=r.data.sharedWithMe;
+    title='Shared with Me';
+
+  }else if(state.section==='recent'){
+
+    list=r.data.recentlyUsed;
+    title='Recently Used';
+
+  }else if(state.section==='favorites'){
+
+    list=r.data.favorites;
+    title='Favorites';
+
+  }else if(state.section==='templates'){
+
+    list=r.data.saved;
+    title='Templates';
+
+  }else{
+
+    list=r.data.saved;
+    title='Saved';
+
+  }
+
+  m.innerHTML=`
+
+    <div class="page-title">
+
+      <div>
+
+        <h1>
+          ${title}
+        </h1>
+
+        <div class="sub">
+          Your SignedIt workspace
+        </div>
+
+      </div>
+
+      <div>
+
+        <button
+          class="btn dark"
+          onclick="newTemplate()"
+        >
+          + Create template
+        </button>
+
+      </div>
+
+    </div>
+
+    ${
+      state.user.role==='admin'
+      ?
+      `
+      <div
+        class="invite-note"
+        style="margin-bottom:16px"
+      >
+
+        <b>
+          Document Storage
+        </b>
+
+        <div style="margin-top:5px">
+
+          ${
+            r.data.storageConnected
+            ?
+            '✓ Storage configured. Your company document workspace is ready.'
+            :
+            'Storage is being prepared for this company.'
+          }
+
+        </div>
+
+      </div>
+      `
+      :
+      ''
+    }
+
+    ${
+      list.length
+      ?
+      `
+      <div class="cards">
+        ${list.map(t=>templateCard(t)).join('')}
+      </div>
+      `
+      :
+      `
+      <div class="empty">
+
+        <b>
+          No ${title.toLowerCase()} yet.
+        </b>
+
+        <div style="margin-top:7px">
+          Create a template to get started.
+        </div>
+
+      </div>
+      `
+    }
+
+  `;
+}
+
+function templateCard(t){
+
+  return `
+
+    <div class="card template-card">
+
+      <div>
+
+        <div
+          style="display:flex;justify-content:space-between;gap:8px"
+        >
+
+          <div class="template-name">
+            ${esc(t.name)}
+          </div>
+
+          <button
+            class="star ${t.isFavorite?'on':''}"
+            onclick="event.stopPropagation();fav('${t.templateId}')"
+          >
+            ★
+          </button>
+
+        </div>
+
+        <div
+          class="meta"
+          style="margin-top:6px"
+        >
+          Updated ${new Date(t.updatedAt||t.createdAt).toLocaleString()}
+        </div>
+
+      </div>
+
+      <div class="card-actions">
+
+        <button
+          class="btn"
+          onclick="openTemplate('${t.templateId}')"
+        >
+          Open
+        </button>
+
+        <button
+          class="btn"
+          onclick="startSend('${t.templateId}')"
+        >
+          Send
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+}
+
+async function fav(id){
+
+  const r=await api(
+    'toggleFavorite',
+    {
+      itemId:id,
+      itemType:'template'
+    }
+  );
+
+  if(r.success){
+    loadDashboard();
+  }
+}
+
+/* =========================================================
+   TEMPLATE EDITOR
+   ========================================================= */
+
+async function newTemplate(){
+
+  const input=document.createElement('input');
+
+  input.type='file';
+  input.accept='application/pdf';
+
+  input.onchange=async()=>{
+
+    const f=input.files[0];
+
+    if(!f)return;
+
+    state.editorTemplateId=null;
+    state.fields=[];
+
+    await loadEditorPdf(
+      await f.arrayBuffer()
+    );
+
+    state.view='editor';
+
+    render();
+  };
+
+  input.click();
+}
+
+async function openTemplate(id){
+
+  const r=await api(
+    'getTemplate',
+    {
+      templateId:id
+    }
+  );
+
+  if(!r.success){
+    return toast(r.message);
+  }
+
+  state.editorTemplateId=id;
+  state.fields=r.data.fields;
+
+  await loadEditorPdf(
+    fromB64(r.data.pdfBase64)
+  );
+
+  state.editorName=r.data.name;
+  state.view='editor';
+
+  render();
+}
+
+function fromB64(s){
+
+  const b=Uint8Array.from(
+    atob(s),
+    c=>c.charCodeAt(0)
+  );
+
+  return b.buffer;
+}
+
+function toB64(buf){
+
+  const b=new Uint8Array(buf);
+  let s='';
+
+  for(
+    let i=0;
+    i<b.length;
+    i+=0x8000
+  ){
+    s+=String.fromCharCode(
+      ...b.subarray(i,i+0x8000)
+    );
+  }
+
+  return btoa(s);
+}
+
+async function loadEditorPdf(buf){
+
+  state.pdf=buf;
+
+  const pdf=await pdfjsLib.getDocument({
+    data:new Uint8Array(buf.slice(0))
+  }).promise;
+
+  state.pages=[];
+  state.renderedPages=[];
+
+  const holder=document.createElement('div');
+
+  holder.innerHTML='';
+
+  for(
+    let n=1;
+    n<=pdf.numPages;
+    n++
+  ){
+
+    const p=await pdf.getPage(n);
+
+    const vp=p.getViewport({
+      scale:1.5
+    });
+
+    const canvas=document.createElement('canvas');
+
+    canvas.width=vp.width;
+    canvas.height=vp.height;
+
+    await p.render({
+      canvasContext:canvas.getContext('2d'),
+      viewport:vp
+    }).promise;
+
+    const page=document.createElement('div');
+
+    page.className='doc-page';
+
+    const ov=document.createElement('div');
+
+    ov.className='overlay';
+    ov.dataset.page=n-1;
+
+    page.append(
+      canvas,
+      ov
+    );
+
+    state.pages.push({
+      ov,
+      ratio:vp.width/vp.height
+    });
+
+    holder.append(page);
+  }
+
+  state.renderedPages=
+    Array.from(holder.children);
+}
+
+function renderEditor(){
+
+  if(!state.renderedPages){
+    renderLanding();
+    return;
+  }
+
+  $('#app').innerHTML=`
+
+    <div class="editor-top">
+
+      <button
+        class="btn"
+        onclick="state.view='dashboard';render()"
+      >
+        ← Back
+      </button>
+
+      <div class="editor-name">
+        ${esc(state.editorName||'Untitled template')}
+      </div>
+
+      <div class="spacer"></div>
+
+      <button
+        class="btn"
+        onclick="saveTemplate()"
+      >
+        Save
+      </button>
+
+      <button
+        class="btn dark"
+        onclick="startSend(state.editorTemplateId)"
+      >
+        Send
+      </button>
+
+    </div>
+
+    <div class="editor-layout">
+
+      <aside class="toolbox">
+
+        <div class="toolgroup">
+
+          <h5>
+            Standard
+          </h5>
+
+          ${tool('signature','Signature')}
+          ${tool('initials','Initials')}
+          ${tool('name','Name')}
+          ${tool('email','Email')}
+          ${tool('date','Date')}
+
+        </div>
+
+        <div class="toolgroup">
+
+          <h5>
+            Input
+          </h5>
+
+          ${tool('text','Text')}
+          ${tool('long_text','Long text')}
+          ${tool('number','Number')}
+          ${tool('address','Address')}
+
+        </div>
+
+        <div class="toolgroup">
+
+          <h5>
+            Selection
+          </h5>
+
+          ${tool('checkbox','Checkbox')}
+          ${tool('dropdown','Dropdown')}
+          ${tool('radio','Radio')}
+
+        </div>
+
+        <div class="toolgroup">
+
+          <h5>
+            Company
+          </h5>
+
+          ${tool('company','Company')}
+          ${tool('job_title','Job title')}
+
+        </div>
+
+      </aside>
+
+      <main
+        class="canvas-wrap"
+        id="canvasWrap"
+      ></main>
+
+      <aside
+        class="properties"
+        id="properties"
+      >
+        <div class="small">
+          Select a field to edit its properties.
+        </div>
+      </aside>
+
+    </div>
+
+  `;
+
+  const cw=$('#canvasWrap');
+
+  state.renderedPages.forEach(
+    p=>cw.append(p)
+  );
+
+  state.pages=
+    state.renderedPages.map(
+      (p,i)=>({
+        ov:p.querySelector('.overlay'),
+        ratio:state.pages[i]?.ratio||1
+      })
+    );
+
+  state.tool=null;
+
+  renderFields();
+}
+
+function tool(t,label){
+
+  return `
+    <button
+      class="field-tool"
+      onclick="selectTool('${t}')"
+    >
+      ${label}
+    </button>
+  `;
+}
+
+function selectTool(t){
+
+  state.tool=
+    state.tool===t
+    ?
+    null
+    :
+    t;
+
+  toast(
+    state.tool
+    ?
+    'Click the document to place '+t
+    :
+    'Field tool cancelled'
+  );
+}
+
+function placeField(e,ov){
+
+  if(!state.tool||e.target!==ov)return;
+
+  const r=ov.getBoundingClientRect();
+  const pg=state.pages[+ov.dataset.page];
+
+  const sizes={
+    signature:[.28,.07],
+    initials:[.12,.05],
+    text:[.25,.04],
+    long_text:[.35,.09],
+    number:[.16,.04],
+    name:[.25,.04],
+    email:[.28,.04],
+    date:[.18,.04],
+    checkbox:[.035,.035],
+    dropdown:[.25,.04],
+    radio:[.05,.05],
+    address:[.35,.08],
+    company:[.25,.04],
+    job_title:[.25,.04]
+  };
+
+  const [w,h]=
+    sizes[state.tool]||
+    [.2,.04];
+
+  const x=Math.max(
+    0,
+    Math.min(
+      (e.clientX-r.left)/r.width,
+      1-w
+    )
+  );
+
+  const y=Math.max(
+    0,
+    Math.min(
+      (e.clientY-r.top)/r.height,
+      1-h
+    )
+  );
+
+  state.fields.push({
+
+    id:
+      crypto.randomUUID?.()||
+      Math.random().toString(36).slice(2),
+
+    type:state.tool,
+    page:+ov.dataset.page,
+
+    x,
+    y,
+    w,
+    h,
+
+    required:
+      state.tool!=='checkbox',
+
+    recipientRole:'1',
+
+    value:
+      state.tool==='checkbox'
+      ?
+      false
+      :
+      '',
+
+    properties:{
+      options:[
+        'Option 1',
+        'Option 2'
+      ],
+      radioGroup:'group1'
+    }
+
+  });
+
+  state.tool=null;
+
+  renderFields();
+}
+
+function renderFields(){
+
+  state.pages.forEach(p=>{
+
+    p.ov.innerHTML='';
+
+    p.ov.onclick=
+      e=>placeField(e,p.ov);
+
+  });
+
+  state.fields.forEach(f=>{
+
+    const el=document.createElement('div');
+
+    el.className=
+      'field'+
+      (
+        state.selected===f.id
+        ?
+        ' selected'
+        :
+        ''
+      );
+
+    el.style.cssText=
+      `left:${f.x*100}%;top:${f.y*100}%;width:${f.w*100}%;height:${f.h*100}%`;
+
+    el.onclick=e=>{
+
+      e.stopPropagation();
+
+      state.selected=f.id;
+
+      renderFields();
+
+    };
+
+    const del=document.createElement('button');
+
+    del.className='delete';
+    del.textContent='×';
+
+    del.onclick=e=>{
+
+      e.stopPropagation();
+
+      state.fields=
+        state.fields.filter(
+          x=>x.id!==f.id
+        );
+
+      state.selected=null;
+
+      renderFields();
+
+    };
+
+    el.append(del);
+
+    const tag=document.createElement('div');
+
+    tag.className='tag';
+
+    tag.textContent=
+      f.type==='checkbox'
+      ?
+      '☐'
+      :
+      f.type.replace('_',' ');
+
+    el.append(tag);
+
+    const rz=document.createElement('div');
+
+    rz.className='resize';
+
+    rz.onpointerdown=e=>
+      dragField(
+        e,
+        f,
+        el,
+        'resize'
+      );
+
+    el.append(rz);
+
+    el.onpointerdown=e=>{
+
+      if(
+        e.target===del||
+        e.target===rz
+      )return;
+
+      dragField(
+        e,
+        f,
+        el,
+        'move'
+      );
+
+    };
+
+    state.pages[f.page]?.ov.append(el);
+
+  });
+
+  renderProperties();
+}
+
+function dragField(e,f,el,kind){
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  state.selected=f.id;
+
+  const r=
+    el.parentElement.getBoundingClientRect();
+
+  const sx=e.clientX;
+  const sy=e.clientY;
+
+  const ox=f.x;
+  const oy=f.y;
+
+  const ow=f.w;
+  const oh=f.h;
+
+  const move=ev=>{
+
+    const dx=
+      (ev.clientX-sx)/r.width;
+
+    const dy=
+      (ev.clientY-sy)/r.height;
+
+    if(kind==='move'){
+
+      f.x=
+        Math.min(
+          Math.max(ox+dx,0),
+          1-f.w
+        );
+
+      f.y=
+        Math.min(
+          Math.max(oy+dy,0),
+          1-f.h
+        );
+
+    }else{
+
+      f.w=
+        Math.min(
+          Math.max(ow+dx,.02),
+          1-f.x
+        );
+
+      f.h=
+        Math.min(
+          Math.max(oh+dy,.02),
+          1-f.y
+        );
+
+    }
+
+    el.style.left=
+      f.x*100+'%';
+
+    el.style.top=
+      f.y*100+'%';
+
+    el.style.width=
+      f.w*100+'%';
+
+    el.style.height=
+      f.h*100+'%';
+
+  };
+
+  const up=()=>{
+
+    removeEventListener(
+      'pointermove',
+      move
+    );
+
+    removeEventListener(
+      'pointerup',
+      up
+    );
+
+    renderProperties();
+
+  };
+
+  addEventListener(
+    'pointermove',
+    move
+  );
+
+  addEventListener(
+    'pointerup',
+    up
+  );
+}
+
+function renderProperties(){
+
+  const p=$('#properties');
+
+  if(!p)return;
+
+  const f=
+    state.fields.find(
+      x=>x.id===state.selected
+    );
+
+  if(!f){
+
+    p.innerHTML=
+      '<div class="small">Select a field to edit its properties.</div>';
+
+    return;
+  }
+
+  p.innerHTML=`
+
+    <div class="prop">
+
+      <h3>
+        ${esc(f.type.replace('_',' '))}
+      </h3>
+
+      <label>
+        Assigned signer
+      </label>
+
+      <select id="pRecipient">
+
+        <option
+          value="1"
+          ${f.recipientRole==='1'?'selected':''}
+        >
+          Signer 1
+        </option>
+
+        <option
+          value="2"
+          ${f.recipientRole==='2'?'selected':''}
+        >
+          Signer 2
+        </option>
+
+        <option
+          value="3"
+          ${f.recipientRole==='3'?'selected':''}
+        >
+          Signer 3
+        </option>
+
+      </select>
+
+      <label>
+        Required
+      </label>
+
+      <select id="pReq">
+
+        <option
+          value="1"
+          ${f.required?'selected':''}
+        >
+          Required
+        </option>
+
+        <option
+          value="0"
+          ${!f.required?'selected':''}
+        >
+          Optional
+        </option>
+
+      </select>
+
+      ${
+        f.type==='dropdown'
+        ?
+        `
+        <label>
+          Dropdown options (one per line)
+        </label>
+
+        <textarea
+          id="pOpts"
+          rows="6"
+        >${esc((f.properties?.options||[]).join('\n'))}</textarea>
+        `
+        :
+        ''
+      }
+
+      ${
+        f.type==='number'
+        ?
+        `
+        <label>
+          Number rules
+        </label>
+
+        <div class="small">
+          Numbers only are enforced during signing.
+        </div>
+        `
+        :
+        ''
+      }
+
+      <div
+        class="small"
+        style="margin-top:16px"
+      >
+        Position and size are saved automatically
+        when the template is saved.
+      </div>
+
+    </div>
+
+  `;
+
+  $('#pRecipient').onchange=
+    e=>{
+      f.recipientRole=
+        e.target.value;
+    };
+
+  $('#pReq').onchange=
+    e=>{
+      f.required=
+        e.target.value==='1';
+    };
+
+  if($('#pOpts')){
+
+    $('#pOpts').oninput=
+      e=>{
+        f.properties.options=
+          e.target.value
+            .split('\n')
+            .map(x=>x.trim())
+            .filter(Boolean);
+      };
+
+  }
+}
+
+async function saveTemplate(){
+
+  if(!state.pdf)return;
+
+  const name=
+    state.editorName||
+    prompt(
+      'Template name:',
+      'Untitled template'
+    );
+
+  if(!name)return;
+
+  state.editorName=name;
+
+  const r=await api(
+    'saveTemplate',
+    {
+      name,
+      pdfBase64:toB64(state.pdf),
+      fields:state.fields.map(
+        f=>({
+          page:f.page,
+          type:f.type,
+          x:f.x,
+          y:f.y,
+          w:f.w,
+          h:f.h,
+          required:f.required,
+          recipientRole:f.recipientRole,
+          properties:f.properties
+        })
+      )
+    }
+  );
+
+  if(!r.success){
+    return toast(r.message);
+  }
+
+  state.editorTemplateId=
+    r.data.templateId;
+
+  toast('Template saved.');
+}
+
+/* =========================================================
+   SEND
+   ========================================================= */
+
+function startSend(templateId){
+
+  if(!templateId){
+
+    toast(
+      'Save the template before sending.'
+    );
+
+    return;
+  }
+
+  state.recipients=[
+    {
+      name:'',
+      email:''
+    }
+  ];
+
+  state.signingMode=
+    'sequential';
+
+  modal(`
+
+    <h2>
+      Send document
+    </h2>
+
+    <div class="sub">
+      Add signers and choose their signing order.
+    </div>
+
+    <label>
+      Signing mode
+    </label>
+
+    <select id="sendMode">
+
+      <option value="sequential">
+        Sequential — one signer at a time
+      </option>
+
+      <option value="parallel">
+        Parallel — all signers at once
+      </option>
+
+    </select>
+
+    <div id="recList"></div>
+
+    <button
+      class="btn"
+      onclick="addRecRow()"
+    >
+      + Add signer
+    </button>
+
+    <div class="modal-actions">
+
+      <button
+        class="btn"
+        onclick="closeModal()"
+      >
+        Cancel
+      </button>
+
+      <button
+        class="btn dark"
+        onclick="createAndSend('${templateId}')"
+      >
+        Create & send
+      </button>
+
+    </div>
+
+  `);
+
+  renderRecRows();
+}
+
+function renderRecRows(){
+
+  const box=$('#recList');
+
+  if(!box)return;
+
+  box.innerHTML=
+    state.recipients.map(
+      (r,i)=>`
+
+        <div
+          class="card"
+          style="margin:10px 0;padding:12px"
+        >
+
+          <b>
+            Signer ${i+1}
+          </b>
+
+          <input
+            id="rn${i}"
+            placeholder="Full name"
+            value="${esc(r.name)}"
+          >
+
+          <input
+            id="re${i}"
+            placeholder="Email"
+            value="${esc(r.email)}"
+          >
+
+        </div>
+
+      `
+    ).join('');
+}
+
+function addRecRow(){
+
+  state.recipients.push({
+    name:'',
+    email:''
+  });
+
+  renderRecRows();
+}
+
+async function createAndSend(templateId){
+
+  state.recipients=
+    state.recipients.map(
+      (r,i)=>({
+        name:$('#rn'+i).value,
+        email:$('#re'+i).value
+      })
+    );
+
+  if(
+    state.recipients.some(
+      r=>!r.name||!r.email
+    )
+  ){
+
+    toast(
+      'Complete every signer.'
+    );
+
+    return;
+  }
+
+  const mode=
+    $('#sendMode').value;
+
+  const r=await api(
+    'createEnvelope',
+    {
+      templateId,
+      signingMode:mode,
+      recipients:state.recipients
+    }
+  );
+
+  if(!r.success){
+    return toast(r.message);
+  }
+
+  const send=await api(
+    'sendEnvelope',
+    {
+      envelopeId:r.data.envelopeId,
+      signingUrl:
+        location.origin+
+        location.pathname
+    }
+  );
+
+  if(!send.success){
+    return toast(send.message);
+  }
+
+  closeModal();
+
+  toast('Document sent.');
+}
+
+/* =========================================================
+   SIGNER
+   ========================================================= */
+
+async function renderSigner(){
+
+  const r=await api(
+    'signingSession',
+    {
+      token:state.signToken
+    }
+  );
+
+  if(!r.success){
+
+    const alreadySigned=
+      r.error==='ALREADY_SIGNED';
+
+    $('#app').innerHTML=`
+
+      <div class="sign-shell">
+
+        <div class="empty">
+
+          <div
+            class="brand"
+            style="margin-bottom:12px"
+          >
+            SignedIt
+          </div>
+
+          <h2
+            style="font:500 25px Georgia,serif"
+          >
+            ${
+              alreadySigned
+              ?
+              'Signing already completed.'
+              :
+              'Signing link unavailable.'
+            }
+          </h2>
+
+          <div style="margin-top:7px">
+            ${esc(r.message)}
+          </div>
+
+          ${
+            alreadySigned
+            ?
+            `
+            <div style="margin-top:10px">
+              You cannot edit or submit this signing step again.
+            </div>
+            `
+            :
+            ''
+          }
+
+        </div>
+
+      </div>
+
+    `;
+
+    return;
+  }
+
   state.signSession=r.data;
-  $('#app').innerHTML=`<div class="sign-shell"><div class="sign-head"><div><div class="brand">SignedIt</div><div class="small">Secure signing</div></div><div class="spacer"></div><div class="notice">Signing as <b>${esc(r.data.recipient.name)}</b></div></div><div class="sign-doc" id="signDoc"></div><div class="sign-footer"><button class="btn dark" onclick="submitSigner()">Finish signing</button></div></div>`;
+
+  $('#app').innerHTML=`
+
+    <div class="sign-shell">
+
+      <div class="sign-head">
+
+        <div>
+
+          <div class="brand">
+            SignedIt
+          </div>
+
+          <div class="small">
+            Secure signing
+          </div>
+
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="notice">
+          Signing as
+          <b>
+            ${esc(r.data.recipient.name)}
+          </b>
+        </div>
+
+      </div>
+
+      <div
+        class="sign-doc"
+        id="signDoc"
+      ></div>
+
+      <div class="sign-footer">
+
+        <button
+          class="btn dark"
+          onclick="submitSigner()"
+        >
+          Finish signing
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+
   await renderSignPdf(r.data);
 }
 
 async function renderSignPdf(data){
-  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(fromB64(data.pdfBase64))}).promise;
+
+  const pdf=
+    await pdfjsLib.getDocument({
+      data:new Uint8Array(
+        fromB64(data.pdfBase64)
+      )
+    }).promise;
+
   const host=$('#signDoc');
-  for(let n=1;n<=pdf.numPages;n++){
-    const p=await pdf.getPage(n),vp=p.getViewport({scale:1.5}),canvas=document.createElement('canvas');
-    canvas.width=vp.width;canvas.height=vp.height;
-    await p.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
-    const pg=document.createElement('div');pg.className='sign-page';
-    const ov=document.createElement('div');ov.className='overlay';pg.append(canvas,ov);host.append(pg);
-    data.fields.filter(f=>f.page===n-1).forEach(f=>{
-      const el=document.createElement('div');el.dataset.fieldId=f.id;
-      el.className='field'+(String(f.recipientRole||'')===String(data.recipient.sequence)?' assigned':'');
-      el.style.cssText=`left:${f.x*100}%;top:${f.y*100}%;width:${f.w*100}%;height:${f.h*100}%`;
-      const owned=!f.recipientRole||String(f.recipientRole)===String(data.recipient.sequence);
-      const completed=!!f.value || f.value===true;
 
-      // Previous signers' values are already burned into the PDF. Keep those
-      // fields visible but completely locked; do not draw them a second time.
-      if(!owned){
-        el.style.pointerEvents='none';
-        el.style.background='transparent';
-        el.style.border='0';
-        if(completed)el.setAttribute('aria-label','Completed field');
-        ov.append(el);
-        return;
-      }
+  for(
+    let n=1;
+    n<=pdf.numPages;
+    n++
+  ){
 
-      if(f.type==='signature' || f.type==='initials'){
-        el.textContent=f.value?'Signed':'Click to sign';
-        el.onclick=()=>signatureFor(f,el);
-      }else if(f.type==='checkbox'){
-        const c=document.createElement('input');c.type='checkbox';c.checked=f.value===true||f.value==='true';c.onchange=()=>f.value=c.checked;el.append(c);
-      }else if(f.type==='dropdown'){
-        const s=document.createElement('select');
-        (f.properties?.options||[]).forEach(o=>{const op=document.createElement('option');op.textContent=o;op.value=o;s.append(op)});
-        s.value=f.value||'';s.onchange=()=>f.value=s.value;el.append(s);
-      }else if(f.type==='number'){
-        const i=document.createElement('input');i.type='number';i.value=f.value||'';i.oninput=()=>f.value=i.value;el.append(i);
-      }else if(f.type==='date'){
-        const i=document.createElement('input');i.type='date';i.value=f.value||'';i.oninput=()=>f.value=i.value;el.append(i);
-      }else{
-        const i=document.createElement('input');i.type='text';i.value=f.value||'';i.placeholder=f.type.replace('_',' ');i.oninput=()=>f.value=i.value;el.append(i);
-      }
-      ov.append(el);
+    const p=await pdf.getPage(n);
+
+    const vp=p.getViewport({
+      scale:1.5
     });
+
+    const canvas=
+      document.createElement('canvas');
+
+    canvas.width=vp.width;
+    canvas.height=vp.height;
+
+    await p.render({
+      canvasContext:canvas.getContext('2d'),
+      viewport:vp
+    }).promise;
+
+    const pg=
+      document.createElement('div');
+
+    pg.className='sign-page';
+
+    const ov=
+      document.createElement('div');
+
+    ov.className='overlay';
+
+    pg.append(
+      canvas,
+      ov
+    );
+
+    host.append(pg);
+
+    data.fields
+      .filter(
+        f=>f.page===n-1
+      )
+      .forEach(f=>{
+
+        const el=
+          document.createElement('div');
+
+        el.dataset.fieldId=f.id;
+
+        el.className=
+          'field'+
+          (
+            String(f.recipientRole||'')===
+            String(data.recipient.sequence)
+            ?
+            ' assigned'
+            :
+            ''
+          );
+
+        el.style.cssText=
+          `left:${f.x*100}%;top:${f.y*100}%;width:${f.w*100}%;height:${f.h*100}%`;
+
+        const owned=
+          !f.recipientRole||
+          String(f.recipientRole)===
+          String(data.recipient.sequence);
+
+        const completed=
+          !!f.value||
+          f.value===true;
+
+        if(!owned){
+
+          el.style.pointerEvents=
+            'none';
+
+          el.style.background=
+            'transparent';
+
+          el.style.border='0';
+
+          if(completed){
+
+            el.setAttribute(
+              'aria-label',
+              'Completed field'
+            );
+
+          }
+
+          ov.append(el);
+          return;
+        }
+
+        if(
+          f.type==='signature'||
+          f.type==='initials'
+        ){
+
+          el.textContent=
+            f.value
+            ?
+            'Signed'
+            :
+            'Click to sign';
+
+          el.onclick=
+            ()=>signatureFor(f,el);
+
+        }else if(
+          f.type==='checkbox'
+        ){
+
+          const c=
+            document.createElement('input');
+
+          c.type='checkbox';
+
+          c.checked=
+            f.value===true||
+            f.value==='true';
+
+          c.onchange=
+            ()=>f.value=c.checked;
+
+          el.append(c);
+
+        }else if(
+          f.type==='dropdown'
+        ){
+
+          const s=
+            document.createElement('select');
+
+          (f.properties?.options||[])
+            .forEach(o=>{
+
+              const op=
+                document.createElement('option');
+
+              op.textContent=o;
+              op.value=o;
+
+              s.append(op);
+
+            });
+
+          s.value=f.value||'';
+
+          s.onchange=
+            ()=>f.value=s.value;
+
+          el.append(s);
+
+        }else if(
+          f.type==='number'
+        ){
+
+          const i=
+            document.createElement('input');
+
+          i.type='number';
+          i.value=f.value||'';
+
+          i.oninput=
+            ()=>f.value=i.value;
+
+          el.append(i);
+
+        }else if(
+          f.type==='date'
+        ){
+
+          const i=
+            document.createElement('input');
+
+          i.type='date';
+          i.value=f.value||'';
+
+          i.oninput=
+            ()=>f.value=i.value;
+
+          el.append(i);
+
+        }else{
+
+          const i=
+            document.createElement('input');
+
+          i.type='text';
+          i.value=f.value||'';
+          i.placeholder=
+            f.type.replace('_',' ');
+
+          i.oninput=
+            ()=>f.value=i.value;
+
+          el.append(i);
+        }
+
+        ov.append(el);
+
+      });
   }
 }
-let sigTarget=null;let sigTargetElement=null;function signatureFor(f,el){sigTarget=f;sigTargetElement=el;modal(`<h2>Your signature</h2><canvas id="sigPad" width="600" height="180" style="width:100%;border:1px dashed #aaa;border-radius:7px;touch-action:none"></canvas><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="applySignerSig()">Apply</button></div>`);const c=$('#sigPad'),ctx=c.getContext('2d');let down=false;c.onpointerdown=e=>{down=true;c.setPointerCapture(e.pointerId);const r=c.getBoundingClientRect();ctx.beginPath();ctx.moveTo((e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height)};c.onpointermove=e=>{if(!down)return;const r=c.getBoundingClientRect();ctx.lineWidth=3;ctx.lineCap='round';ctx.lineTo((e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height);ctx.stroke()};c.onpointerup=()=>down=false}
-function applySignerSig(){const c=$('#sigPad');if(!c||!sigTarget)return;sigTarget.value=c.toDataURL('image/png');closeModal();if(sigTargetElement){sigTargetElement.textContent='Signed';sigTargetElement.classList.add('assigned')}sigTarget=null;sigTargetElement=null}
+
+let sigTarget=null;
+let sigTargetElement=null;
+
+function signatureFor(f,el){
+
+  sigTarget=f;
+  sigTargetElement=el;
+
+  modal(`
+
+    <h2>
+      Your signature
+    </h2>
+
+    <canvas
+      id="sigPad"
+      width="600"
+      height="180"
+      style="width:100%;border:1px dashed #aaa;border-radius:7px;touch-action:none"
+    ></canvas>
+
+    <div class="modal-actions">
+
+      <button
+        class="btn"
+        onclick="closeModal()"
+      >
+        Cancel
+      </button>
+
+      <button
+        class="btn dark"
+        onclick="applySignerSig()"
+      >
+        Apply
+      </button>
+
+    </div>
+
+  `);
+
+  const c=$('#sigPad');
+  const ctx=c.getContext('2d');
+
+  let down=false;
+
+  c.onpointerdown=e=>{
+
+    down=true;
+
+    c.setPointerCapture(
+      e.pointerId
+    );
+
+    const r=
+      c.getBoundingClientRect();
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      (e.clientX-r.left)*
+      c.width/r.width,
+
+      (e.clientY-r.top)*
+      c.height/r.height
+    );
+
+  };
+
+  c.onpointermove=e=>{
+
+    if(!down)return;
+
+    const r=
+      c.getBoundingClientRect();
+
+    ctx.lineWidth=3;
+    ctx.lineCap='round';
+
+    ctx.lineTo(
+      (e.clientX-r.left)*
+      c.width/r.width,
+
+      (e.clientY-r.top)*
+      c.height/r.height
+    );
+
+    ctx.stroke();
+
+  };
+
+  c.onpointerup=
+    ()=>down=false;
+}
+
+function applySignerSig(){
+
+  const c=$('#sigPad');
+
+  if(!c||!sigTarget)return;
+
+  sigTarget.value=
+    c.toDataURL('image/png');
+
+  closeModal();
+
+  if(sigTargetElement){
+
+    sigTargetElement.textContent=
+      'Signed';
+
+    sigTargetElement.classList.add(
+      'assigned'
+    );
+
+  }
+
+  sigTarget=null;
+  sigTargetElement=null;
+}
+
 async function submitSigner(){
 
   if(state.signingBusy)return;
 
   const data={};
 
-  for(const f of state.signSession.fields){
+  for(
+    const f of state.signSession.fields
+  ){
 
     const owned=
       !f.recipientRole||
       String(f.recipientRole)===
-      String(state.signSession.recipient.sequence);
+      String(
+        state.signSession.recipient.sequence
+      );
 
     if(!owned)continue;
 
@@ -205,16 +3077,26 @@ async function submitSigner(){
       f.required&&
       (!f.value||String(f.value)==='')
     ){
-      toast('Please complete all required fields.');
+
+      toast(
+        'Please complete all required fields.'
+      );
+
       return;
     }
 
     if(
       f.type==='number'&&
       f.value!==''&&
-      !/^[-+]?\d*(\.\d+)?$/.test(String(f.value))
+      !/^[-+]?\d*(\.\d+)?$/.test(
+        String(f.value)
+      )
     ){
-      toast('Number fields accept numbers only.');
+
+      toast(
+        'Number fields accept numbers only.'
+      );
+
       return;
     }
 
@@ -223,19 +3105,37 @@ async function submitSigner(){
 
   state.signingBusy=true;
 
-  const button=document.querySelector('.sign-footer .btn.dark');
+  const button=
+    document.querySelector(
+      '.sign-footer .btn.dark'
+    );
+
   if(button){
+
     button.disabled=true;
-    button.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px"><span class="spinner" style="width:15px;height:15px;border-width:2px;margin:0"></span> Processing…</span>';
+
+    button.innerHTML=`
+      <span
+        style="display:inline-flex;align-items:center;gap:8px"
+      >
+        <span
+          class="spinner"
+          style="width:15px;height:15px;border-width:2px;margin:0"
+        ></span>
+        Processing…
+      </span>
+    `;
   }
 
-  showProcessing('Processing your signature…','Please wait while SignedIt saves your signing step. Do not close or refresh this page.');
+  showProcessing(
+    'Processing your signature…',
+    'Please wait while SignedIt saves your signing step. Do not close or refresh this page.'
+  );
 
   try{
-    // Every signer creates the next immutable PDF version. buildCompletedPdf()
-    // starts from the PDF this signer received and burns only this signer's
-    // fields into it. Previous signers are already permanently embedded.
-    const finalPdfBase64=await buildCompletedPdf();
+
+    const finalPdfBase64=
+      await buildCompletedPdf();
 
     const r=await api(
       'submitSigning',
@@ -243,291 +3143,785 @@ async function submitSigner(){
         token:state.signToken,
         values:data,
         pdfBase64:finalPdfBase64,
-        signingUrl:location.origin+location.pathname
+        signingUrl:
+          location.origin+
+          location.pathname
       }
     );
 
     hideProcessing();
 
     if(!r.success){
+
       state.signingBusy=false;
+
       if(button){
+
         button.disabled=false;
-        button.textContent='Finish signing';
+
+        button.textContent=
+          'Finish signing';
       }
+
       toast(r.message);
       return;
     }
 
-    /*
-     * Keep the page locked after successful submission.
-     * There is deliberately no renderSigner() call here.
-     */
     if(r.data.envelopeCompleted){
 
       $('#app').innerHTML=`
+
         <div class="sign-shell">
+
           <div class="empty">
-            <div class="brand" style="margin-bottom:12px">SignedIt</div>
-            <h2 style="font:500 28px Georgia,serif">Document completed.</h2>
-            <div>All required signers have completed the document.</div>
-            <div style="margin-top:10px">A copy of the completed signed document has been sent to all signers.</div>
-            <div style="margin-top:18px">
-              <button class="btn dark" onclick="downloadCompleted()">Download signed document</button>
+
+            <div
+              class="brand"
+              style="margin-bottom:12px"
+            >
+              SignedIt
             </div>
+
+            <h2
+              style="font:500 28px Georgia,serif"
+            >
+              Document completed.
+            </h2>
+
+            <div>
+              All required signers have completed the document.
+            </div>
+
+            <div style="margin-top:10px">
+              A copy of the completed signed document
+              has been sent to all signers.
+            </div>
+
+            <div style="margin-top:18px">
+
+              <button
+                class="btn dark"
+                onclick="downloadCompleted()"
+              >
+                Download signed document
+              </button>
+
+            </div>
+
           </div>
+
         </div>
+
       `;
 
     }else{
 
       $('#app').innerHTML=`
+
         <div class="sign-shell">
+
           <div class="empty">
-            <div class="brand" style="margin-bottom:12px">SignedIt</div>
-            <h2 style="font:500 28px Georgia,serif">Thank you.</h2>
-            <div>Your signing step has been completed successfully.</div>
-            <div style="margin-top:10px">You can no longer edit this signing step.</div>
-            <div style="margin-top:10px">The document has been sent to the next signer.</div>
+
+            <div
+              class="brand"
+              style="margin-bottom:12px"
+            >
+              SignedIt
+            </div>
+
+            <h2
+              style="font:500 28px Georgia,serif"
+            >
+              Thank you.
+            </h2>
+
+            <div>
+              Your signing step has been completed successfully.
+            </div>
+
+            <div style="margin-top:10px">
+              You can no longer edit this signing step.
+            </div>
+
+            <div style="margin-top:10px">
+              The document has been sent to the next signer.
+            </div>
+
           </div>
+
         </div>
+
       `;
     }
 
   }catch(e){
+
     hideProcessing();
+
     state.signingBusy=false;
 
     if(button){
+
       button.disabled=false;
-      button.textContent='Finish signing';
+
+      button.textContent=
+        'Finish signing';
     }
 
-    toast('Could not prepare the document: '+(e&&e.message?e.message:'Unknown error'));
-    console.error('SignedIt PDF preparation error:',e);
+    toast(
+      'Could not prepare the document: '+
+      (
+        e&&e.message
+        ?
+        e.message
+        :
+        'Unknown error'
+      )
+    );
+
+    console.error(
+      'SignedIt PDF preparation error:',
+      e
+    );
   }
 }
 
+/* =========================================================
+   PROCESSING
+   ========================================================= */
+
 function showProcessing(title,message){
-  let root=document.getElementById('processingRoot');
+
+  let root=
+    document.getElementById(
+      'processingRoot'
+    );
+
   if(!root){
-    root=document.createElement('div');
-    root.id='processingRoot';
+
+    root=
+      document.createElement('div');
+
+    root.id=
+      'processingRoot';
+
     document.body.append(root);
   }
+
   root.innerHTML=`
+
     <div class="processing-overlay">
+
       <div class="processing-card">
+
         <div class="spinner"></div>
-        <div style="font:500 20px Georgia,serif;margin-bottom:7px">${esc(title)}</div>
-        <div class="sub" style="line-height:1.5">${esc(message)}</div>
+
+        <div
+          style="font:500 20px Georgia,serif;margin-bottom:7px"
+        >
+          ${esc(title)}
+        </div>
+
+        <div
+          class="sub"
+          style="line-height:1.5"
+        >
+          ${esc(message)}
+        </div>
+
       </div>
+
     </div>
+
   `;
 }
 
 function hideProcessing(){
-  const root=document.getElementById('processingRoot');
+
+  const root=
+    document.getElementById(
+      'processingRoot'
+    );
+
   if(root)root.remove();
 }
 
+/* =========================================================
+   PDF SIGNING
+   ========================================================= */
+
 function pdfFieldRect(page,f){
+
   const pageW=page.getWidth();
   const pageH=page.getHeight();
 
-  // Template coordinates are normalized from the TOP-LEFT corner.
-  // PDF coordinates are normalized from the BOTTOM-LEFT corner.
-  const nx=Math.max(0,Math.min(1,Number(f.x)||0));
-  const ny=Math.max(0,Math.min(1,Number(f.y)||0));
-  const nw=Math.max(0,Math.min(1-nx,Number(f.w)||0));
-  const nh=Math.max(0,Math.min(1-ny,Number(f.h)||0));
+  const nx=Math.max(
+    0,
+    Math.min(
+      1,
+      Number(f.x)||0
+    )
+  );
 
-  return {
+  const ny=Math.max(
+    0,
+    Math.min(
+      1,
+      Number(f.y)||0
+    )
+  );
+
+  const nw=Math.max(
+    0,
+    Math.min(
+      1-nx,
+      Number(f.w)||0
+    )
+  );
+
+  const nh=Math.max(
+    0,
+    Math.min(
+      1-ny,
+      Number(f.h)||0
+    )
+  );
+
+  return{
+
     x:nx*pageW,
-    y:pageH-((ny+nh)*pageH),
+
+    y:
+      pageH-
+      ((ny+nh)*pageH),
+
     width:nw*pageW,
+
     height:nh*pageH
+
   };
 }
 
 function cleanPdfText(value){
+
   return String(value??'')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'')
-    .replace(/[✓✔☑☒]/g,'X');
+    .replace(
+      /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,
+      ''
+    )
+    .replace(
+      /[✓✔☑☒]/g,
+      'X'
+    );
 }
 
 async function buildCompletedPdf(){
-  if(!state.signSession||!state.signSession.pdfBase64){
-    throw new Error('The signing PDF is unavailable.');
+
+  if(
+    !state.signSession||
+    !state.signSession.pdfBase64
+  ){
+
+    throw new Error(
+      'The signing PDF is unavailable.'
+    );
   }
 
-  const {PDFDocument,StandardFonts,rgb}=PDFLib;
-  const pdfDoc=await PDFDocument.load(fromB64(state.signSession.pdfBase64));
-  const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const currentSequence=String(state.signSession.recipient.sequence);
+  const {
+    PDFDocument,
+    StandardFonts,
+    rgb
+  }=PDFLib;
 
-  for(const f of state.signSession.fields){
-    // Only burn this signer's values into this version.
-    // Earlier signers are already permanently embedded in the PDF received
-    // by this signer.
-    const owned=!f.recipientRole||String(f.recipientRole)===currentSequence;
+  const pdfDoc=
+    await PDFDocument.load(
+      fromB64(
+        state.signSession.pdfBase64
+      )
+    );
+
+  const font=
+    await pdfDoc.embedFont(
+      StandardFonts.Helvetica
+    );
+
+  const currentSequence=
+    String(
+      state.signSession.recipient.sequence
+    );
+
+  for(
+    const f of state.signSession.fields
+  ){
+
+    const owned=
+      !f.recipientRole||
+      String(f.recipientRole)===
+      currentSequence;
+
     if(!owned)continue;
-    if(f.value===undefined||f.value===null||String(f.value)==='')continue;
 
-    const pageIndex=Number(f.page);
-    const pages=pdfDoc.getPages();
-    if(!Number.isInteger(pageIndex)||pageIndex<0||pageIndex>=pages.length){
-      throw new Error('Field "'+String(f.type)+'" points to an invalid PDF page.');
+    if(
+      f.value===undefined||
+      f.value===null||
+      String(f.value)===''
+    )continue;
+
+    const pageIndex=
+      Number(f.page);
+
+    const pages=
+      pdfDoc.getPages();
+
+    if(
+      !Number.isInteger(pageIndex)||
+      pageIndex<0||
+      pageIndex>=pages.length
+    ){
+
+      throw new Error(
+        'Field "'+
+        String(f.type)+
+        '" points to an invalid PDF page.'
+      );
     }
 
-    const page=pages[pageIndex];
-    const rect=pdfFieldRect(page,f);
-    const x=rect.x, y=rect.y, w=rect.width, h=rect.height;
+    const page=
+      pages[pageIndex];
+
+    const rect=
+      pdfFieldRect(page,f);
+
+    const x=rect.x;
+    const y=rect.y;
+    const w=rect.width;
+    const h=rect.height;
 
     if(w<=0||h<=0)continue;
 
-    if(f.type==='signature'||f.type==='initials'){
-      if(String(f.value).startsWith('data:image/')){
-        const raw=String(f.value).split(',')[1];
-        const bytes=Uint8Array.from(atob(raw),c=>c.charCodeAt(0));
-        const image=await pdfDoc.embedPng(bytes);
-        const dims=image.scale(1);
-        const scale=Math.min(w/dims.width,h/dims.height);
-        const iw=dims.width*scale;
-        const ih=dims.height*scale;
-        page.drawImage(image,{x:x+(w-iw)/2,y:y+(h-ih)/2,width:iw,height:ih});
+    if(
+      f.type==='signature'||
+      f.type==='initials'
+    ){
+
+      if(
+        String(f.value)
+          .startsWith('data:image/')
+      ){
+
+        const raw=
+          String(f.value)
+            .split(',')[1];
+
+        const bytes=
+          Uint8Array.from(
+            atob(raw),
+            c=>c.charCodeAt(0)
+          );
+
+        const image=
+          await pdfDoc.embedPng(
+            bytes
+          );
+
+        const dims=
+          image.scale(1);
+
+        const scale=
+          Math.min(
+            w/dims.width,
+            h/dims.height
+          );
+
+        const iw=
+          dims.width*scale;
+
+        const ih=
+          dims.height*scale;
+
+        page.drawImage(
+          image,
+          {
+            x:x+(w-iw)/2,
+            y:y+(h-ih)/2,
+            width:iw,
+            height:ih
+          }
+        );
       }
+
       continue;
     }
 
     if(f.type==='checkbox'){
-      const checked=f.value===true||String(f.value)==='true';
+
+      const checked=
+        f.value===true||
+        String(f.value)==='true';
+
       if(checked){
-        const size=Math.max(7,Math.min(18,h*.65));
-        page.drawText('X',{x:x+(w-size)/2,y:y+(h-size)/2+1,size,font,color:rgb(.15,.15,.15)});
+
+        const size=
+          Math.max(
+            7,
+            Math.min(
+              18,
+              h*.65
+            )
+          );
+
+        page.drawText(
+          'X',
+          {
+            x:x+(w-size)/2,
+            y:y+(h-size)/2+1,
+            size,
+            font,
+            color:rgb(
+              .15,
+              .15,
+              .15
+            )
+          }
+        );
       }
+
       continue;
     }
 
-    const text=cleanPdfText(f.value);
+    const text=
+      cleanPdfText(f.value);
+
     if(!text)continue;
 
-    // Keep text inside the exact field rectangle.
-    const padding=Math.max(2,Math.min(5,h*.12));
-    const availableW=Math.max(1,w-padding*2);
-    const availableH=Math.max(1,h-padding*2);
-    let size=Math.max(6,Math.min(16,h*.58));
+    const padding=
+      Math.max(
+        2,
+        Math.min(
+          5,
+          h*.12
+        )
+      );
 
-    // Reduce font size until the first line fits the field width.
-    while(size>6 && font.widthOfTextAtSize(text.split(/\r?\n/)[0],size)>availableW){
+    const availableW=
+      Math.max(
+        1,
+        w-padding*2
+      );
+
+    const availableH=
+      Math.max(
+        1,
+        h-padding*2
+      );
+
+    let size=
+      Math.max(
+        6,
+        Math.min(
+          16,
+          h*.58
+        )
+      );
+
+    while(
+      size>6&&
+      font.widthOfTextAtSize(
+        text.split(/\r?\n/)[0],
+        size
+      )>availableW
+    ){
       size-=0.5;
     }
 
-    const lineHeight=size*1.15;
-    const maxLines=Math.max(1,Math.floor(availableH/lineHeight));
-    const rawLines=text.split(/\r?\n/);
+    const lineHeight=
+      size*1.15;
+
+    const maxLines=
+      Math.max(
+        1,
+        Math.floor(
+          availableH/lineHeight
+        )
+      );
+
+    const rawLines=
+      text.split(/\r?\n/);
+
     const lines=[];
 
-    for(const rawLine of rawLines){
+    for(
+      const rawLine of rawLines
+    ){
+
       let line=rawLine;
-      if(font.widthOfTextAtSize(line,size)<=availableW){
+
+      if(
+        font.widthOfTextAtSize(
+          line,
+          size
+        )<=availableW
+      ){
+
         lines.push(line);
         continue;
       }
+
       let chunk='';
-      for(const word of line.split(/\s+/)){
-        const test=chunk?chunk+' '+word:word;
-        if(font.widthOfTextAtSize(test,size)<=availableW){
+
+      for(
+        const word of line.split(/\s+/)
+      ){
+
+        const test=
+          chunk
+          ?
+          chunk+' '+word
+          :
+          word;
+
+        if(
+          font.widthOfTextAtSize(
+            test,
+            size
+          )<=availableW
+        ){
+
           chunk=test;
+
         }else{
-          if(chunk)lines.push(chunk);
+
+          if(chunk){
+            lines.push(chunk);
+          }
+
           chunk=word;
         }
       }
-      if(chunk)lines.push(chunk);
+
+      if(chunk){
+        lines.push(chunk);
+      }
     }
 
-    const visible=lines.slice(0,maxLines);
-    const firstY=y+h-padding-size;
-    visible.forEach((line,i)=>{
-      page.drawText(line,{x:x+padding,y:firstY-i*lineHeight,size,font,color:rgb(.15,.15,.15)});
-    });
+    const visible=
+      lines.slice(0,maxLines);
+
+    const firstY=
+      y+h-padding-size;
+
+    visible.forEach(
+      (line,i)=>{
+
+        page.drawText(
+          line,
+          {
+            x:x+padding,
+            y:firstY-i*lineHeight,
+            size,
+            font,
+            color:rgb(
+              .15,
+              .15,
+              .15
+            )
+          }
+        );
+
+      }
+    );
   }
 
-  return toB64(await pdfDoc.save());
+  return toB64(
+    await pdfDoc.save()
+  );
 }
+
+/* =========================================================
+   COMPLETED DOCUMENT
+   ========================================================= */
 
 async function renderCompletedDocument(){
 
   $('#app').innerHTML=`
+
     <div class="sign-shell">
+
       <div class="empty">
-        <div class="brand" style="margin-bottom:12px">SignedIt</div>
+
+        <div
+          class="brand"
+          style="margin-bottom:12px"
+        >
+          SignedIt
+        </div>
+
         <div class="spinner"></div>
-        <h2 style="font:500 24px Georgia,serif">Loading completed document…</h2>
-        <div>Please wait.</div>
+
+        <h2
+          style="font:500 24px Georgia,serif"
+        >
+          Loading completed document…
+        </h2>
+
+        <div>
+          Please wait.
+        </div>
+
       </div>
+
     </div>
+
   `;
 
-  const r=await api('completedDocument',{token:state.signToken});
+  const r=await api(
+    'completedDocument',
+    {
+      token:state.signToken
+    }
+  );
 
   if(!r.success){
+
     $('#app').innerHTML=`
+
       <div class="sign-shell">
+
         <div class="empty">
-          <div class="brand" style="margin-bottom:12px">SignedIt</div>
-          <h2 style="font:500 24px Georgia,serif">Document not ready yet.</h2>
-          <div>${esc(r.message)}</div>
+
+          <div
+            class="brand"
+            style="margin-bottom:12px"
+          >
+            SignedIt
+          </div>
+
+          <h2
+            style="font:500 24px Georgia,serif"
+          >
+            Document not ready yet.
+          </h2>
+
+          <div>
+            ${esc(r.message)}
+          </div>
+
         </div>
+
       </div>
+
     `;
+
     return;
   }
 
   $('#app').innerHTML=`
+
     <div class="sign-shell">
+
       <div class="empty">
-        <div class="brand" style="margin-bottom:12px">SignedIt</div>
-        <h2 style="font:500 28px Georgia,serif">Your signed document is ready.</h2>
-        <div>${esc(r.documentName)}</div>
-        <div style="margin-top:18px">
-          <button class="btn dark" onclick="downloadCompleted()">Download signed document</button>
+
+        <div
+          class="brand"
+          style="margin-bottom:12px"
+        >
+          SignedIt
         </div>
+
+        <h2
+          style="font:500 28px Georgia,serif"
+        >
+          Your signed document is ready.
+        </h2>
+
+        <div>
+          ${esc(r.documentName)}
+        </div>
+
+        <div style="margin-top:18px">
+
+          <button
+            class="btn dark"
+            onclick="downloadCompleted()"
+          >
+            Download signed document
+          </button>
+
+        </div>
+
       </div>
+
     </div>
+
   `;
 }
 
 async function downloadCompleted(){
 
-  showProcessing('Preparing download…','Please wait while SignedIt retrieves your completed signed document.');
+  showProcessing(
+    'Preparing download…',
+    'Please wait while SignedIt retrieves your completed signed document.'
+  );
 
-  const r=await api('completedDocument',{token:state.signToken});
+  const r=await api(
+    'completedDocument',
+    {
+      token:state.signToken
+    }
+  );
 
   hideProcessing();
 
   if(!r.success){
+
     toast(r.message);
     return;
   }
 
-  const bytes=Uint8Array.from(
-    atob(r.pdfBase64),
-    c=>c.charCodeAt(0)
-  );
+  const bytes=
+    Uint8Array.from(
+      atob(r.pdfBase64),
+      c=>c.charCodeAt(0)
+    );
 
-  const blob=new Blob([bytes],{type:'application/pdf'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
+  const blob=
+    new Blob(
+      [bytes],
+      {
+        type:'application/pdf'
+      }
+    );
+
+  const url=
+    URL.createObjectURL(blob);
+
+  const a=
+    document.createElement('a');
+
   a.href=url;
-  a.download=r.documentName||'SignedIt - Completed.pdf';
+
+  a.download=
+    r.documentName||
+    'SignedIt - Completed.pdf';
+
   document.body.appendChild(a);
+
   a.click();
+
   a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
+
+  setTimeout(
+    ()=>URL.revokeObjectURL(url),
+    1000
+  );
 }
 
+/* =========================================================
+   START
+   ========================================================= */
+
 render();
+
 </script>
-</body></html>
+</body>
+</html>
