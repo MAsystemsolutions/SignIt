@@ -23,20 +23,61 @@
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const API='https://script.google.com/macros/s/AKfycbwWwz1weCJ938Gq_dZ3Og6yDhPzMWFcOaRUIUbujEkXS0O7_HHRCJmpsqV-GMbCZPvU/exec';
-const state={token:localStorage.getItem('si_token')||'',user:JSON.parse(localStorage.getItem('si_user')||'null'),view:'dashboard',section:'saved',templates:[],dashboard:null,pdf:null,fields:[],pages:[],selected:null,tool:null,editorTemplateId:null,recipients:[],signingMode:'sequential',signToken:new URLSearchParams(location.search).get('token'),completedMode:new URLSearchParams(location.search).get('completed')==='1',signingBusy:false};
+const state={token:localStorage.getItem('si_token')||'',user:JSON.parse(localStorage.getItem('si_user')||'null'),permissions:JSON.parse(localStorage.getItem('si_permissions')||'null'),view:'dashboard',section:'saved',templates:[],dashboard:null,pdf:null,fields:[],pages:[],selected:null,tool:null,editorTemplateId:null,recipients:[],signingMode:'sequential',signToken:new URLSearchParams(location.search).get('token'),completedMode:new URLSearchParams(location.search).get('completed')==='1',signingBusy:false};
 const $=s=>document.querySelector(s); const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 function toast(m){const e=document.createElement('div');e.className='toast';e.textContent=m;$('#toastRoot').append(e);setTimeout(()=>e.remove(),2600)}
 async function api(action,data={}){try{const r=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,token:state.token,data})});const j=await r.json();if(!j.success&&j.error==='UNAUTHORIZED'){logoutLocal();}return j}catch(e){return{success:false,message:'Could not reach the SignedIt backend.'}}}
-function logoutLocal(){state.token='';state.user=null;localStorage.removeItem('si_token');localStorage.removeItem('si_user');render()}
+function logoutLocal(){state.token='';state.user=null;localStorage.removeItem('si_token');localStorage.removeItem('si_user');localStorage.removeItem('si_permissions');state.permissions=null;state.view='dashboard';render()}
 function initials(n){return String(n||'U').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()}
 function authRequired(){if(!state.token){showLogin();return false}return true}
-function showLogin(){modal(`<h2>Log in to SignedIt</h2><div class="sub">Only administrators and team users have accounts.</div><label>Email</label><input id="mEmail" type="email"><label>Password</label><input id="mPass" type="password"><div id="mErr" class="small"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="doLogin()">Log in</button></div>`)}
+function showLogin(){modal(`<h2>Log in to SignedIt</h2><div class="sub">Use your SignedIt account. Signers do not need an account.</div><label>Email</label><input id="mEmail" type="email"><label>Password</label><input id="mPass" type="password"><div id="mErr" class="small"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn dark" onclick="doLogin()">Log in</button></div>`)}
 function modal(html){$('#modalRoot').innerHTML=`<div class="modal" onclick="if(event.target===this)closeModal()"><div class="modal-card">${html}</div></div>`}function closeModal(){$('#modalRoot').innerHTML=''}
-async function doLogin(){const email=$('#mEmail').value,password=$('#mPass').value,r=await api('login',{email,password});if(!r.success){$('#mErr').textContent=r.message;return}state.token=r.data.token;state.user=r.data;localStorage.setItem('si_token',state.token);localStorage.setItem('si_user',JSON.stringify(state.user));closeModal();render();toast('Welcome back.')}
+async function doLogin(){
+  const email=$('#mEmail').value.trim(),password=$('#mPass').value,r=await api('login',{email,password});
+  if(!r.success){$('#mErr').textContent=r.message;return}
+  state.token=r.data.token;
+  state.user=r.data;
+  state.permissions=r.data.permissions||null;
+  state.view=String(r.data.role).toLowerCase()==='developer'?'developer':'dashboard';
+  localStorage.setItem('si_token',state.token);
+  localStorage.setItem('si_user',JSON.stringify(state.user));
+  localStorage.setItem('si_permissions',JSON.stringify(state.permissions||{}));
+  closeModal();
+  render();
+  toast('Welcome back.');
+}
 async function doLogout(){await api('logout');logoutLocal()}
-function render(){if(state.signToken){renderSigner();return}if(!state.token){renderLanding();return}if(state.view==='editor')renderEditor();else renderApp()}
+function render(){if(state.signToken){if(state.completedMode){renderCompletedDocument()}else{renderSigner()}return}if(!state.token){renderLanding();return}if(String(state.user?.role||'').toLowerCase()==='developer'||state.view==='developer'){renderDeveloper();return}if(state.view==='editor')renderEditor();else renderApp()}
 function renderLanding(){$('#app').innerHTML=`<div style="min-height:100vh;display:grid;place-items:center"><div style="text-align:center;max-width:540px;padding:30px"><div class="brand" style="font-size:38px;margin-bottom:15px">SignedIt</div><h1 style="font:500 34px Georgia,serif">Simple, controlled e-signing.</h1><p class="sub" style="line-height:1.7">Create templates and send documents from one elegant workspace. Signers receive a secure link and do not need a SignedIt account.</p><button class="btn dark" onclick="showLogin()">Log in</button></div></div>`}
-function renderApp(){const u=state.user||{};$('#app').innerHTML=`<header class="top"><div class="brand">SignedIt</div><nav class="nav"><button class="active">Workspace</button></nav><div class="spacer"></div><div class="userbox"><div class="avatar">${initials(u.name)}</div><div><b>${esc(u.name)}</b><small>${esc(u.role)}</small></div></div><button class="btn" onclick="doLogout()">Log out</button></header><div class="shell"><aside class="side"><h4>Workspace</h4>${sideBtn('saved','Saved')}${sideBtn('created','Created by Me')}${sideBtn('shared','Shared with Me')}${sideBtn('recent','Recently Used')}${sideBtn('favorites','Favorites')}<h4 style="margin-top:25px">Signing</h4>${sideBtn('action','Action Required')}${sideBtn('pending','Pending')}${sideBtn('completed','Completed')}<h4 style="margin-top:25px">Manage</h4>${sideBtn('templates','Templates')}${u.role==='admin'?sideBtn('team','Team'):''}</aside><main class="main" id="main"></main></div>`;loadDashboard()}
+function renderApp(){
+  const u=state.user||{},p=state.permissions||{};
+  $('#app').innerHTML=`<header class="top"><div class="brand">SignedIt</div><nav class="nav"><button class="active">Workspace</button></nav><div class="spacer"></div><div class="userbox"><div class="avatar">${initials(u.name)}</div><div><b>${esc(u.name)}</b><small>${esc(u.role)}</small></div></div><button class="btn" onclick="doLogout()">Log out</button></header><div class="shell"><aside class="side"><h4>Workspace</h4>${sideBtn('saved','Saved')}${sideBtn('created','Created by Me')}${sideBtn('shared','Shared with Me')}${sideBtn('recent','Recently Used')}${sideBtn('favorites','Favorites')}<h4 style="margin-top:25px">Signing</h4>${sideBtn('action','Action Required')}${sideBtn('pending','Pending')}${sideBtn('completed','Completed')}<h4 style="margin-top:25px">Manage</h4>${sideBtn('templates','Templates')}${p.manageUsers?sideBtn('team','Team'):''}</aside><main class="main" id="main"></main></div>`;
+  if(state.section==='team'&&!p.manageUsers)state.section='saved';
+  loadDashboard();
+}
+function renderDeveloper(){
+  const u=state.user||{};
+  $('#app').innerHTML=`<header class="top"><div class="brand">SignedIt</div><nav class="nav"><button class="active">Headquarters</button></nav><div class="spacer"></div><div class="userbox"><div class="avatar">${initials(u.name)}</div><div><b>${esc(u.name)}</b><small>Developer</small></div></div><button class="btn" onclick="doLogout()">Log out</button></header><main class="main" id="main"><div class="sub">Loading headquarters…</div></main>`;
+  loadDeveloperDashboard();
+}
+
+async function loadDeveloperDashboard(){
+  const m=$('#main');
+  if(!m)return;
+  m.innerHTML='<div class="sub">Loading headquarters…</div>';
+  const r=await api('developerDashboard');
+  if(!r.success){m.innerHTML=`<div class="empty"><b>Headquarters unavailable</b><div style="margin-top:7px">${esc(r.message)}</div></div>`;return;}
+  const d=r.data||{},stats=d.stats||{};
+  m.innerHTML=`<div class="page-title"><div><h1>Headquarters</h1><div class="sub">System-level access for SignedIt.</div></div></div>
+    <div class="cards" style="margin-bottom:24px">
+      <div class="card"><div class="meta">Companies</div><div style="font:500 30px Georgia,serif;margin-top:6px">${stats.companies||0}</div></div>
+      <div class="card"><div class="meta">Accounts</div><div style="font:500 30px Georgia,serif;margin-top:6px">${stats.users||0}</div></div>
+      <div class="card"><div class="meta">Client admins</div><div style="font:500 30px Georgia,serif;margin-top:6px">${stats.admins||0}</div></div>
+    </div>
+    <div class="page-title"><div><h1 style="font-size:24px">Companies</h1><div class="sub">Client organizations currently registered in SignedIt.</div></div></div>
+    ${d.companies?.length?`<div class="cards">${d.companies.map(c=>`<div class="card"><div class="template-name">${esc(c.name)}</div><div class="meta" style="margin-top:6px">Company ID: ${esc(c.companyId)}</div><div class="meta" style="margin-top:3px">Created: ${esc(c.createdAt)}</div></div>`).join('')}</div>`:'<div class="empty">No companies yet.</div>'}`;
+}
+
 function sideBtn(k,label){return `<button class="${state.section===k?'active':''}" onclick="state.section='${k}';loadDashboard()">${label}<span class="count"></span></button>`}
 async function loadDashboard(){const m=$('#main');m.innerHTML='<div class="sub">Loading workspace…</div>';const r=await api('listDashboard');if(!r.success){m.innerHTML=`<div class="empty">${esc(r.message)}</div>`;return}state.dashboard=r.data;let list=[];let title='Saved';if(state.section==='created'){list=r.data.createdByMe;title='Created by Me'}else if(state.section==='shared'){list=r.data.sharedWithMe;title='Shared with Me'}else if(state.section==='recent'){list=r.data.recentlyUsed;title='Recently Used'}else if(state.section==='favorites'){list=r.data.favorites;title='Favorites'}else if(state.section==='templates'){list=r.data.saved;title='Templates'}else{list=r.data.saved;title='Saved'}m.innerHTML=`<div class="page-title"><div><h1>${title}</h1><div class="sub">Your SignedIt workspace</div></div><div><button class="btn dark" onclick="newTemplate()">+ Create template</button></div></div>${list.length?`<div class="cards">${list.map(t=>templateCard(t)).join('')}</div>`:`<div class="empty"><b>No ${title.toLowerCase()} yet.</b><div style="margin-top:7px">Create a template to get started.</div></div>`}`}
 function templateCard(t){return `<div class="card template-card"><div><div style="display:flex;justify-content:space-between;gap:8px"><div class="template-name">${esc(t.name)}</div><button class="star ${t.isFavorite?'on':''}" onclick="event.stopPropagation();fav('${t.templateId}')">★</button></div><div class="meta" style="margin-top:6px">Updated ${new Date(t.updatedAt||t.createdAt).toLocaleString()}</div></div><div class="card-actions"><button class="btn" onclick="openTemplate('${t.templateId}')">Open</button><button class="btn" onclick="startSend('${t.templateId}')">Send</button></div></div>`}
@@ -461,6 +502,18 @@ async function downloadCompleted(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
-render();
+async function bootstrap(){
+  if(state.signToken){render();return;}
+  if(!state.token){render();return;}
+  const r=await api('validateSession');
+  if(!r.success)return;
+  state.user=r.data;
+  state.permissions=r.data.permissions||null;
+  state.view=String(r.data.role).toLowerCase()==='developer'?'developer':'dashboard';
+  localStorage.setItem('si_user',JSON.stringify(state.user));
+  localStorage.setItem('si_permissions',JSON.stringify(state.permissions||{}));
+  render();
+}
+bootstrap();
 </script>
 </body></html>
