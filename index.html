@@ -288,7 +288,7 @@ async function buildCompletedPdf(){
     if(!owned)continue;
     if(f.value===undefined||f.value===null||String(f.value)==='')continue;
 
-    const page=pdfDoc.getPage(Number(f.page));
+    const page=pdfDoc.getPage(Number(f.page)+1);
     if(!page)continue;
 
     const pageW=page.getWidth();
