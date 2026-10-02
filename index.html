@@ -353,6 +353,136 @@ function renderLanding(){
 }
 
 /* =========================================================
+   HEADQUARTERS (DEVELOPER) VIEWS
+   ========================================================= */
+
+function renderDeveloper(){
+  $('#app').innerHTML=`
+    <header class="top">
+      <div class="brand">SignedIt</div>
+      <nav class="nav"><button class="active">Headquarters</button></nav>
+      <div class="spacer"></div>
+      <div class="userbox">
+        <div class="avatar">${initials(state.user?.name)}</div>
+        <div>
+          <b>${esc(state.user?.name)}</b>
+          <small>Developer</small>
+        </div>
+      </div>
+      <button class="btn" onclick="doLogout()">Log out</button>
+    </header>
+    <main id="hqMain"></main>
+  `;
+  loadDeveloperDashboard();
+}
+
+async function loadDeveloperDashboard(){
+  const m=$('#hqMain');
+  if(!m) return;
+  m.innerHTML='<div style="padding:40px" class="sub">Loading Headquarters...</div>';
+  const r=await api('developerDashboard');
+  if(!r.success){ m.innerHTML=`<div style="padding:40px" class="empty">${esc(r.message)}</div>`; return; }
+
+  const d=r.data;
+  const s=d.stats||{};
+
+  m.innerHTML=`
+    <div style="max-width:1250px;margin:0 auto;padding:36px 42px">
+      <div class="page-title">
+        <div>
+          <h1>SignedIt Headquarters</h1>
+          <div class="sub">Platform overview and client company management</div>
+        </div>
+        <button class="btn dark" onclick="showOnboardCompany()">+ Onboard Company</button>
+      </div>
+
+      <div class="cards" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:28px">
+        <div class="card"><div class="meta">Companies</div><div style="font:500 26px Georgia,serif;margin-top:6px">${s.companies||0}</div></div>
+        <div class="card"><div class="meta">Active</div><div style="font:500 26px Georgia,serif;margin-top:6px">${s.activeCompanies||0}</div></div>
+        <div class="card"><div class="meta">Trial</div><div style="font:500 26px Georgia,serif;margin-top:6px">${s.trialCompanies||0}</div></div>
+        <div class="card"><div class="meta">Users</div><div style="font:500 26px Georgia,serif;margin-top:6px">${s.users||0}</div></div>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--line);font-weight:600">Client Companies</div>
+        <div>
+          ${d.companies.length?d.companies.map(c=>`
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:12px;padding:14px 20px;align-items:center;border-bottom:1px solid var(--line)">
+              <div>
+                <b>${esc(c.name)}</b>
+                <div class="sub">${esc(c.primaryAdminEmail||'No admin email')}</div>
+              </div>
+              <div><span class="status-pill ${esc(String(c.status).toLowerCase())}">${esc(c.status)}</span></div>
+              <div>${esc(c.plan)}</div>
+              <div>${esc(c.totalUsers||0)} users</div>
+              <div><button class="btn" onclick="manageCompany('${c.companyId}')">Manage</button></div>
+            </div>
+          `).join(''):'<div class="empty">No client companies onboarded yet.</div>'}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function showOnboardCompany(){
+  modal(`
+    <h2>Onboard Company</h2>
+    <div class="sub" style="margin-bottom:14px">Create a new client company workspace.</div>
+    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Company Name</label>
+    <input id="ocName" placeholder="Business name">
+    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Admin Full Name</label>
+    <input id="ocAdmin" placeholder="Full name">
+    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Admin Email</label>
+    <input id="ocEmail" type="email" placeholder="admin@company.com">
+    <div id="ocErr" class="small" style="color:var(--danger)"></div>
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn dark" id="onboardCompBtn" onclick="runAction('#onboardCompBtn','Onboarding...', submitOnboardCompany)">Onboard Company</button>
+    </div>
+  `);
+}
+
+async function submitOnboardCompany(){
+  const companyName=$('#ocName').value.trim();
+  const adminName=$('#ocAdmin').value.trim();
+  const adminEmail=$('#ocEmail').value.trim();
+  if(!companyName||!adminName||!adminEmail){ $('#ocErr').textContent='Please fill in all fields.'; return; }
+
+  const r=await api('onboardCompany',{companyName,adminName,adminEmail,acceptUrl:location.origin+location.pathname});
+  if(!r.success){ $('#ocErr').textContent=r.message; return; }
+  closeModal();
+  toast('Company onboarded successfully.');
+  loadDeveloperDashboard();
+}
+
+async function manageCompany(companyId){
+  const r=await api('getHQCompany',{companyId});
+  if(!r.success){ toast(r.message); return; }
+  const c=r.data.company;
+  const u=r.data.usage;
+
+  modal(`
+    <h2>${esc(c.name)}</h2>
+    <div class="sub" style="margin-bottom:16px">Company metadata and management</div>
+    <div style="margin-bottom:12px"><b>Admin:</b> ${esc(c.primaryAdminEmail)}</div>
+    <div style="margin-bottom:12px"><b>Status:</b> ${esc(c.status)}</div>
+    <div style="margin-bottom:12px"><b>Plan:</b> ${esc(c.plan)}</div>
+    <div style="margin-bottom:16px"><b>Users:</b> ${u.users} total (${u.activeUsers} active)</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn dark" onclick="resendAdminInviteModal('${c.companyId}')">Resend Admin Invite</button>
+    </div>
+  `);
+}
+
+async function resendAdminInviteModal(companyId){
+  const r=await api('resendCompanyAdminInvite',{companyId,acceptUrl:location.origin+location.pathname});
+  if(!r.success){ toast(r.message); return; }
+  closeModal();
+  toast(r.data.alreadyActive?'Admin account is already active.':'Admin invitation sent.');
+}
+
+/* =========================================================
    DESIGN B: MAIN DASHBOARD & APP
    ========================================================= */
 
