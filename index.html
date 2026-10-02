@@ -264,47 +264,71 @@ function hideProcessing(){
   if(root)root.remove();
 }
 
-async function buildCompletedPdf(){
+function pdfFieldRect(page,f){
+  const pageW=page.getWidth();
+  const pageH=page.getHeight();
 
+  // Template coordinates are normalized from the TOP-LEFT corner.
+  // PDF coordinates are normalized from the BOTTOM-LEFT corner.
+  const nx=Math.max(0,Math.min(1,Number(f.x)||0));
+  const ny=Math.max(0,Math.min(1,Number(f.y)||0));
+  const nw=Math.max(0,Math.min(1-nx,Number(f.w)||0));
+  const nh=Math.max(0,Math.min(1-ny,Number(f.h)||0));
+
+  return {
+    x:nx*pageW,
+    y:pageH-((ny+nh)*pageH),
+    width:nw*pageW,
+    height:nh*pageH
+  };
+}
+
+function cleanPdfText(value){
+  return String(value??'')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'')
+    .replace(/[✓✔☑☒]/g,'X');
+}
+
+async function buildCompletedPdf(){
   if(!state.signSession||!state.signSession.pdfBase64){
     throw new Error('The signing PDF is unavailable.');
   }
 
   const {PDFDocument,StandardFonts,rgb}=PDFLib;
-
-  const pdfDoc=await PDFDocument.load(
-    fromB64(state.signSession.pdfBase64)
-  );
-
-  const font=await pdfDoc.embedFont(
-    StandardFonts.Helvetica
-  );
-
+  const pdfDoc=await PDFDocument.load(fromB64(state.signSession.pdfBase64));
+  const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
   const currentSequence=String(state.signSession.recipient.sequence);
 
   for(const f of state.signSession.fields){
-
+    // Only burn this signer's values into this version.
+    // Earlier signers are already permanently embedded in the PDF received
+    // by this signer.
     const owned=!f.recipientRole||String(f.recipientRole)===currentSequence;
     if(!owned)continue;
     if(f.value===undefined||f.value===null||String(f.value)==='')continue;
 
-    const page=pdfDoc.getPage(Number(f.page)+1);
-    if(!page)continue;
+    const pageIndex=Number(f.page);
+    const pages=pdfDoc.getPages();
+    if(!Number.isInteger(pageIndex)||pageIndex<0||pageIndex>=pages.length){
+      throw new Error('Field "'+String(f.type)+'" points to an invalid PDF page.');
+    }
 
-    const pageW=page.getWidth();
-    const pageH=page.getHeight();
+    const page=pages[pageIndex];
+    const rect=pdfFieldRect(page,f);
+    const x=rect.x, y=rect.y, w=rect.width, h=rect.height;
 
-    const x=Number(f.x)*pageW;
-    const w=Number(f.w)*pageW;
-    const h=Number(f.h)*pageH;
-    const y=pageH-(Number(f.y)+Number(f.h))*pageH;
+    if(w<=0||h<=0)continue;
 
-    if(f.type==='signature' || f.type==='initials'){
+    if(f.type==='signature'||f.type==='initials'){
       if(String(f.value).startsWith('data:image/')){
         const raw=String(f.value).split(',')[1];
         const bytes=Uint8Array.from(atob(raw),c=>c.charCodeAt(0));
         const image=await pdfDoc.embedPng(bytes);
-        page.drawImage(image,{x,y,width:w,height:h});
+        const dims=image.scale(1);
+        const scale=Math.min(w/dims.width,h/dims.height);
+        const iw=dims.width*scale;
+        const ih=dims.height*scale;
+        page.drawImage(image,{x:x+(w-iw)/2,y:y+(h-ih)/2,width:iw,height:ih});
       }
       continue;
     }
@@ -312,38 +336,55 @@ async function buildCompletedPdf(){
     if(f.type==='checkbox'){
       const checked=f.value===true||String(f.value)==='true';
       if(checked){
-        page.drawText('X',{x:x+w*.18,y:y+h*.12,size:Math.max(8,h*.65),font});
+        const size=Math.max(7,Math.min(18,h*.65));
+        page.drawText('X',{x:x+(w-size)/2,y:y+(h-size)/2+1,size,font,color:rgb(.15,.15,.15)});
       }
       continue;
     }
 
-    let text=String(f.value);
+    const text=cleanPdfText(f.value);
     if(!text)continue;
 
-    const size=Math.max(7,Math.min(16,h*.58));
+    // Keep text inside the exact field rectangle.
+    const padding=Math.max(2,Math.min(5,h*.12));
+    const availableW=Math.max(1,w-padding*2);
+    const availableH=Math.max(1,h-padding*2);
+    let size=Math.max(6,Math.min(16,h*.58));
 
-    if(f.type==='long_text' || f.type==='address'){
-      const lines=text.split(/\r?\n/);
-      const lineHeight=size*1.2;
-      lines.slice(0,Math.max(1,Math.floor(h/lineHeight))).forEach((line,i)=>{
-        page.drawText(line.slice(0,Math.max(1,Math.floor(w/(size*.52)))),{
-          x:x+3,
-          y:y+h-size-(i*lineHeight),
-          size,
-          font,
-          color:rgb(.15,.15,.15)
-        });
-      });
-    }else{
-      const maxChars=Math.max(1,Math.floor(w/(size*.52)));
-      page.drawText(text.slice(0,maxChars),{
-        x:x+3,
-        y:y+(h-size)/2+1,
-        size,
-        font,
-        color:rgb(.15,.15,.15)
-      });
+    // Reduce font size until the first line fits the field width.
+    while(size>6 && font.widthOfTextAtSize(text.split(/\r?\n/)[0],size)>availableW){
+      size-=0.5;
     }
+
+    const lineHeight=size*1.15;
+    const maxLines=Math.max(1,Math.floor(availableH/lineHeight));
+    const rawLines=text.split(/\r?\n/);
+    const lines=[];
+
+    for(const rawLine of rawLines){
+      let line=rawLine;
+      if(font.widthOfTextAtSize(line,size)<=availableW){
+        lines.push(line);
+        continue;
+      }
+      let chunk='';
+      for(const word of line.split(/\s+/)){
+        const test=chunk?chunk+' '+word:word;
+        if(font.widthOfTextAtSize(test,size)<=availableW){
+          chunk=test;
+        }else{
+          if(chunk)lines.push(chunk);
+          chunk=word;
+        }
+      }
+      if(chunk)lines.push(chunk);
+    }
+
+    const visible=lines.slice(0,maxLines);
+    const firstY=y+h-padding-size;
+    visible.forEach((line,i)=>{
+      page.drawText(line,{x:x+padding,y:firstY-i*lineHeight,size,font,color:rgb(.15,.15,.15)});
+    });
   }
 
   return toB64(await pdfDoc.save());
