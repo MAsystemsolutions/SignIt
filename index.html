@@ -69,6 +69,10 @@ const esc=s=>String(s??'').replace(
   }[c])
 );
 
+function getCleanBaseUrl(){
+  return window.location.href.split('?')[0].split('#')[0];
+}
+
 function toast(m){
   const e=document.createElement('div');
   e.className='toast';
@@ -814,7 +818,7 @@ async function resendAdminInvite(companyId){
     'resendCompanyAdminInvite',
     {
       companyId,
-      acceptUrl:location.origin+location.pathname
+      acceptUrl:getCleanBaseUrl()
     }
   );
 
@@ -988,7 +992,7 @@ async function submitOnboardCompany(){
       adminName,
       adminEmail,
       plan:$('#ocPlan').value,
-      acceptUrl:location.origin+location.pathname
+      acceptUrl:getCleanBaseUrl()
     }
   );
 
@@ -1821,7 +1825,7 @@ async function submitOnboardUser(){
     name,
     email,
     role,
-    acceptUrl:location.origin+location.pathname
+    acceptUrl:getCleanBaseUrl()
   });
 
   state.requestBusy=false;
@@ -2846,9 +2850,7 @@ async function createAndSend(templateId){
     'sendEnvelope',
     {
       envelopeId:r.data.envelopeId,
-      signingUrl:
-        location.origin+
-        location.pathname
+      signingUrl:getCleanBaseUrl()
     }
   );
 
@@ -3416,9 +3418,7 @@ async function submitSigner(){
         token:state.signToken,
         values:data,
         pdfBase64:finalPdfBase64,
-        signingUrl:
-          location.origin+
-          location.pathname
+        signingUrl:getCleanBaseUrl()
       }
     );
 
@@ -4070,7 +4070,7 @@ async function renderCompletedDocument(){
           </div>
 
           <h2
-            style="font:500 24px Georgia,serif"
+            style="font:500 28px Georgia,serif"
           >
             Document not ready yet.
           </h2>
