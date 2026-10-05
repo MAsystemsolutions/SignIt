@@ -36,7 +36,7 @@ const API='https://script.google.com/macros/s/AKfycbwWwz1weCJ938Gq_dZ3Og6yDhPzMW
 const state={
   token:localStorage.getItem('si_token')||'',
   user:JSON.parse(localStorage.getItem('si_user')||'null'),
-  view:'dashboard',
+  view:'dashboard',  
   section:'saved',
   templates:[],
   dashboard:null,
@@ -72,7 +72,18 @@ const esc=s=>String(s??'').replace(
 function getCleanBaseUrl(){
   return window.location.href.split('?')[0].split('#')[0];
 }
-
+function showInviteLink(email,link,error){
+  modal(`
+    <h2>Invitation email not sent</h2>
+    <div class="sub">The email to ${esc(email)} could not be sent${error?': '+esc(error):'.'}</div>
+    <label>Send this activation link to the admin yourself</label>
+    <input id="invLink" readonly value="${esc(link||'')}" onclick="this.select()">
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn dark" onclick="navigator.clipboard.writeText($('#invLink').value);toast('Link copied.')">Copy link</button>
+    </div>
+  `);
+}
 function toast(m){
   const e=document.createElement('div');
   e.className='toast';
@@ -807,42 +818,29 @@ async function saveCompanyPlan(companyId){
 }
 
 async function resendAdminInvite(companyId){
-  if(!confirm(
-    'Resend the primary administrator invitation?'
-  ))return;
-
+  if(!confirm('Resend the primary administrator invitation?'))return;
   if(state.requestBusy) return;
   state.requestBusy=true;
 
-  const r=await api(
-    'resendCompanyAdminInvite',
-    {
-      companyId,
-      acceptUrl:getCleanBaseUrl()
-    }
-  );
+  const r=await api('resendCompanyAdminInvite',{companyId,acceptUrl:getCleanBaseUrl()});
 
   state.requestBusy=false;
 
-  if(!r.success){
-    return toast(r.message);
+  if(!r.success){return toast(r.message)}
+
+  if(r.data.alreadyActive){
+    toast('The admin account is already active.');
+    manageCompany(companyId);
+    return;
   }
 
-  toast(
-    r.data.alreadyActive
-    ?
-    'The admin account is already active.'
-    :
-    (
-      r.data.sent
-      ?
-      'Invitation sent.'
-      :
-      'New invitation created.'
-    )
-  );
+  if(r.data.sent){
+    toast('Invitation sent.');
+    manageCompany(companyId);
+    return;
+  }
 
-  manageCompany(companyId);
+  showInviteLink(r.data.email,r.data.inviteLink,r.data.inviteError);
 }
 
 async function saveCompanyStatus(companyId){
@@ -999,26 +997,14 @@ async function submitOnboardCompany(){
   state.requestBusy=false;
   if(btn){ btn.disabled=false; btn.textContent='Onboard company'; }
 
-  if(!r.success){
-
-    $('#ocErr').textContent=
-      r.message;
-
-    return;
-  }
-
-  closeModal();
-
-  toast(
-    r.data.inviteSent
-    ?
-    'Company onboarded and Admin invitation sent.'
-    :
-    'Company onboarded.'
-  );
-
+   closeModal();
   loadDeveloperDashboard();
-}
+
+  if(r.data.inviteSent){
+    toast('Company onboarded and Admin invitation sent.');
+  }else{
+    showInviteLink(r.data.adminEmail,r.data.inviteLink,r.data.inviteError);
+  }
 
 /* =========================================================
    INVITATION
